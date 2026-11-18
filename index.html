@@ -2,8 +2,12 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f4f1ea" />
     <link rel="icon" href="data:," />
     <title>Trails</title>
     <style>
@@ -12,19 +16,22 @@
       body {
         height: 100%;
         margin: 0;
-      }
-
-      body {
-        height: 100dvh;
-        box-sizing: border-box;
-        padding: env(safe-area-inset-top) env(safe-area-inset-right)
-          env(safe-area-inset-bottom) env(safe-area-inset-left);
         overflow: hidden;
         overscroll-behavior: none;
         background: #e7e2d8;
+        -webkit-text-size-adjust: 100%;
+      }
+
+      body {
+        position: fixed;
+        inset: 0;
+        box-sizing: border-box;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left);
         touch-action: none;
         user-select: none;
         -webkit-user-select: none;
+        -webkit-touch-callout: none;
         -webkit-tap-highlight-color: transparent;
       }
 
@@ -33,17 +40,24 @@
         place-items: center;
         width: 100%;
         height: 100%;
+        min-height: 0;
+        overflow: hidden;
       }
 
       #game {
         display: block;
         background: #f4f1ea;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
       }
     </style>
   </head>
   <body>
     <div id="stage">
-      <canvas id="game" aria-label="Tabuleiro de Trails">Seu navegador não suporta Canvas 2D.</canvas>
+      <canvas id="game" aria-label="Tabuleiro de Trails: toque numa peça para girar; use os botões Passar turno e Recomeçar.">
+        Seu navegador não suporta Canvas 2D.
+      </canvas>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
