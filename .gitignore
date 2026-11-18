@@ -1,2 +1,5 @@
+# Artefatos de tooling (painel do orquestrador), não conteúdo do projeto
+.openchamber/
+
 node_modules/
 dist/
