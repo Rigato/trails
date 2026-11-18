@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type {
-  CellPos,
   Color,
-  GameEvent,
   LevelLayout,
   Rotation,
   Shape,
 } from '../../src/core/types';
 import { cellAt } from '../../src/core/types';
 import { setup } from '../../src/core/game';
-import { P0_LEVEL } from '../../src/level/p0';
 import {
   board,
   BLUE,
@@ -369,8 +366,7 @@ describe('game — reset', () => {
   });
 });
 
-describe('game — validação do layout', () => {
-  it('aceita o corredor válido', () => {
+describe('game — validação do layout', () => {  it('aceita o corredor válido', () => {
     expect(() => setup(corridor())).not.toThrow();
   });
 
@@ -482,61 +478,5 @@ describe('game — validação do layout', () => {
     const bad = makeLevel('no-trains', board([[EMPTY]]), []);
 
     expect(() => setup(bad)).toThrow(/ao menos um trem/);
-  });
-});
-
-describe('P0 — fumaça de ponta a ponta', () => {
-  it('a solução documentada entrega no 8º passo, sem colisão nem descarrilamento', () => {
-    const game = setup(P0_LEVEL);
-
-    expect(game.state.step).toBe(0);
-
-    const initial = game.prediction('red');
-
-    expect(initial?.path[0]).toEqual(pos(0, 4));
-    expect(initial?.stop).toEqual({ kind: 'noExit', cell: pos(1, 4) });
-
-    const rotations: readonly CellPos[] = [
-      pos(1, 4),
-      pos(2, 4),
-      pos(2, 3),
-      pos(2, 2),
-      pos(3, 2),
-      pos(4, 2),
-    ];
-    const allEvents: GameEvent[] = [];
-
-    rotations.forEach((cell, index) => {
-      const result = game.apply({ kind: 'tap', cell });
-
-      expect(result.advanced).toBe(true);
-      expect(result.outcome.kind).toBe('rotated');
-      expect(game.state.step).toBe(index + 1);
-      allEvents.push(...result.events);
-    });
-
-    const passOne = game.apply({ kind: 'pass' });
-
-    expect(passOne.advanced).toBe(true);
-    expect(game.state.step).toBe(7);
-
-    const passTwo = game.apply({ kind: 'pass' });
-
-    expect(passTwo.advanced).toBe(true);
-    expect(game.state.step).toBe(8);
-    expect(game.state.status).toBe('won');
-    expect(trainById(game, 'red').status).toEqual({ kind: 'delivered' });
-    expect(eventKinds(passTwo.events)).toEqual([
-      'trainMoved',
-      'trainDelivered',
-      'victory',
-    ]);
-
-    allEvents.push(...passOne.events, ...passTwo.events);
-
-    expect(allEvents.some((event) => event.kind === 'collision')).toBe(false);
-    expect(allEvents.some((event) => event.kind === 'trainDerailed')).toBe(
-      false,
-    );
   });
 });

@@ -7,13 +7,20 @@
  * cima de tudo.
  */
 
-import type { GameState, Prediction, Train, TrainId } from '../core/types';
+import type {
+  CellPos,
+  GameState,
+  Prediction,
+  Train,
+  TrainId,
+} from '../core/types';
 import { TUNING } from '../config/tuning';
 import { drawBoard } from './board';
 import {
   drawCellFlash,
   drawDeliveryPulse,
   drawDerailExit,
+  drawFirstHint,
   type CellFlash,
   type DeliveryPulse,
   type DerailExit,
@@ -47,6 +54,8 @@ export interface Scene {
   readonly trains: readonly TrainView[];
   readonly pieceAngles?: ReadonlyMap<string, number>;
   readonly stationScales?: ReadonlyMap<string, number>;
+  /** Peça do primeiro giro que pulsa até a primeira ação válida (D6). */
+  readonly firstHint?: CellPos | null;
   readonly flashes: readonly CellFlash[];
   readonly pulses: readonly DeliveryPulse[];
   readonly exits: readonly DerailExit[];
@@ -65,6 +74,12 @@ export function drawScene(
   ctx.fillRect(0, 0, layout.width, layout.height);
 
   drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales);
+
+  // D6: o halo fica SOB a previsão — o traço e o marcador de parada continuam
+  // sendo a leitura principal; o anel só enquadra a peça do primeiro giro.
+  if (scene.firstHint) {
+    drawFirstHint(ctx, layout, scene.firstHint, now);
+  }
 
   for (const flash of scene.flashes) {
     drawCellFlash(ctx, layout, flash, now);

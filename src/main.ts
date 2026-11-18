@@ -38,6 +38,7 @@ import { P0_LEVEL } from './level/p0';
 import {
   CELL_FLASH_MS,
   easeStep,
+  firstHintTarget,
   rotationProgress,
   stationPulseScale,
   type CellFlash,
@@ -119,6 +120,8 @@ let pendingStepAt: number | null = null;
 let animation: StepAnimation | null = null;
 
 let predictions: Prediction[] = collectPredictions();
+/** Peça do primeiro giro que pulsa no passo 0 (D6); `null` depois da 1ª ação. */
+let firstHint: CellPos | null = firstHintTarget(game.state, predictions);
 let layout: SceneLayout = computeLayout(1, 1, game.state.board);
 
 /** Feedbacks de vida curta, todos ancorados no relógio do loop. */
@@ -344,6 +347,7 @@ function drainAvailable(now: number): void {
 
     if (result.advanced) {
       predictions = collectPredictions();
+      firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
       return;
     }
@@ -436,6 +440,7 @@ function onReset(): void {
   exits = [];
   game.reset();
   predictions = collectPredictions();
+  firstHint = firstHintTarget(game.state, predictions);
   draw(performance.now());
 }
 
@@ -575,6 +580,7 @@ function draw(now: number): void {
     trains: buildTrainViews(now),
     pieceAngles: buildPieceAngles(now),
     stationScales: buildStationScales(now),
+    firstHint,
     flashes,
     pulses,
     exits,
@@ -655,6 +661,8 @@ declare global {
       readonly bufferSize: number;
       readonly animating: boolean;
       readonly pendingStepAt: number | null;
+      /** Peça do hint do primeiro frame (D6); `null` depois da 1ª ação válida. */
+      readonly firstHint: CellPos | null;
       /** Início/fim do passo visual em andamento (QA de duração). */
       readonly stepStartedAt: number | null;
       readonly stepEndsAt: number | null;
@@ -680,6 +688,9 @@ window.__trailsDebug = {
   },
   get pendingStepAt() {
     return pendingStepAt;
+  },
+  get firstHint() {
+    return firstHint;
   },
   get stepStartedAt() {
     return animation?.startedAt ?? null;

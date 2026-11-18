@@ -2,19 +2,26 @@
  * Feel do passo: matemática de animação e feedbacks visuais (E3).
  *
  * Este módulo concentra o que é «sensação» e não é regra: curvas de tempo,
- * flashes de toque sem ação (D3), pulse de entrega (D5) e saída do trem
- * descarrilado (D1). Tudo é função de `now` — nenhum estado escondido, nenhum
- * timer próprio — para o loop único de `main.ts` desenhar qualquer quadro a
- * partir do mesmo relógio.
+ * flashes de toque sem ação (D3), pulse de entrega (D5), saída do trem
+ * descarrilado (D1) e o halo do primeiro giro (D6). Tudo é função de `now` —
+ * nenhum estado escondido, nenhum timer próprio — para o loop único de
+ * `main.ts` desenhar qualquer quadro a partir do mesmo relógio.
  *
  * A duração de cada efeito vem de `config/tuning.ts`; aqui só vivem as curvas
- * e o traço. O flash é o único efeito sem parâmetro de duração na tabela §6:
- * usa uma constante curta (o suficiente para confirmar o toque sem ensinar por
- * ruído).
+ * e o traço. O flash usa uma constante curta (o suficiente para confirmar o
+ * toque sem ensinar por ruído); o halo do D6 respira no período
+ * `firstHintPulseMs` e tem opacidades fixas e discretas.
  */
 
-import type { CellPos, Color, Direction, Train } from '../core/types';
-import { directionOffset } from '../core/types';
+import type {
+  CellPos,
+  Color,
+  Direction,
+  GameState,
+  Prediction,
+  Train,
+} from '../core/types';
+import { cellAt, directionOffset } from '../core/types';
 import type { StepEasing } from '../config/tuning';
 import { TUNING } from '../config/tuning';
 import { cellCenter, cellRect, type SceneLayout } from './layout';
@@ -27,6 +34,102 @@ export const CELL_FLASH_MS = 220;
 export interface CellFlash {
   readonly cell: CellPos;
   readonly startedAt: number;
+}
+
+/**
+ * Alvo do hint do primeiro frame (D6), derivado do estado — sem coordenada de
+ * fase escrita no render.
+ *
+ * A peça que pede o primeiro giro é exatamente onde a previsão pré-primeiro-
+ * passo morre: um `stop` `noExit` cuja célula contém uma peça. Um toque nulo
+ * não muda o estado, então o halo continua; a primeira ação válida incrementa
+ * `step` e o alvo desaparece sozinho. `null` quando não há esse ponto (layout
+ * com a rota já aberta, jogo começado, etc.).
+ *
+ * Futuras fases com mais de um trem usam o primeiro trem `waiting` — o P0 tem
+ * um só; a derivação continua correta quando o layout mudar.
+ */
+export function firstHintTarget(
+  state: GameState,
+  predictions: readonly Prediction[],
+): CellPos | null {
+  if (state.step !== 0 || state.status !== 'ready') {
+    return null;
+  }
+
+  for (const train of state.trains) {
+    if (train.status.kind !== 'waiting') {
+      continue;
+    }
+
+    const prediction = predictions.find(
+      (candidate) => candidate.trainId === train.id,
+    );
+
+    if (prediction === undefined || prediction.stop.kind !== 'noExit') {
+      continue;
+    }
+
+    const content = cellAt(state.board, prediction.stop.cell);
+
+    if (content?.kind === 'piece') {
+      return prediction.stop.cell;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Intensidade (0–1) do halo que «respira» na peça do primeiro giro (D6).
+ *
+ * Uma senoide completa a cada `period`, sem pisca: o halo acende e apaga
+ * devagar. `period <= 0` desliga o hint por completo — é o interruptor do
+ * designer, sem parâmetro novo no tuning.
+ */
+export function hintPulseIntensity(
+  now: number,
+  period = TUNING.firstHintPulseMs,
+): number {
+  if (!(period > 0) || !Number.isFinite(period) || !Number.isFinite(now)) {
+    return 0;
+  }
+
+  return 0.5 - 0.5 * Math.cos((now / period) * Math.PI * 2);
+}
+
+/** Halo do hint do primeiro frame: anel fino + disco levemente tingido (D6). */
+export function drawFirstHint(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  cell: CellPos,
+  now: number,
+): void {
+  const intensity = hintPulseIntensity(now);
+
+  if (TUNING.firstHintPulseMs <= 0 || layout.cell <= 0) {
+    return;
+  }
+
+  const center = cellCenter(layout, cell);
+  const radius = layout.cell * (0.33 + 0.035 * intensity);
+
+  ctx.save();
+
+  // Disco de baixíssima opacidade: chama a célula sem apagar o trilho.
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = TUNING.palette.track;
+  ctx.globalAlpha = 0.02 + 0.04 * intensity;
+  ctx.fill();
+
+  // Anel que respira: fino, escuro o bastante para o olho achar sem piscar.
+  ctx.globalAlpha = 0.14 + 0.14 * intensity;
+  ctx.strokeStyle = TUNING.palette.track;
+  ctx.lineWidth = Math.max(1.5, layout.cell * 0.022);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 /** Pulse de entrega na estação (D5). */
