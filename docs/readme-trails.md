@@ -7,7 +7,10 @@
 
 ## Estado atual
 Pré-protótipo. MVP de validação de regras com fases descartáveis. Decisão do designer: **validar a diversão da mecânica base antes de investir em loja/consumíveis (sink em 2ª fase).**
-Versionamento: git com push constante para `https://github.com/Rigato/trails`; GitHub Pages para testes no celular (a criar).
+
+**P0 «Contrato» implementado (18–19/11/2026)**: fase tutorial 6×6 jogável de ponta a ponta — 1 ação = 1 passo, previsão de trajetória, botão «passar turno», animação com buffer de input, hint do primeiro giro; 91 testes. Pendente: a sessão de playtest com jogador (Q1/Q2/Q6 do plano de protótipo) e o registro de D1–D6 no GDD via Hefesto.
+
+Versionamento: git com push constante para `https://github.com/Rigato/trails`; GitHub Pages servindo o último estado jogável em **https://rigato.github.io/trails/** (deploy automático a cada push em `main`).
 
 ## Decisões-chave já fechadas
 - **Y = desvio ferroviário bidirecional:** talo → ponta ativa; qualquer ponta → talo. Toques alternam trocar-ponta-ativa ↔ girar 90° (8 estados).

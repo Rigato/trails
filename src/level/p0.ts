@@ -72,9 +72,13 @@ import type {
   Rotation,
   Shape,
 } from '../core/types';
+import { TUNING } from '../config/tuning';
 
-/** Cor do par trem/estação do P0 (paleta de protótipo do plano §6). */
-const RED: Color = '#d64545';
+/**
+ * Cor do par trem/estação do P0 — default vivo do tuning (§6, `palette.pair`).
+ * A fase continua sendo o dado; fases futuras declaram as cores dos seus pares.
+ */
+const RED: Color = TUNING.palette.pair;
 
 /** Forma redundante do par trem/estação (acessibilidade, GDD §5). */
 const PAIR_SHAPE: Shape = 'circle';

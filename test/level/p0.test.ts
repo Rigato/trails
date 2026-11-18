@@ -16,6 +16,7 @@ import type {
   PredictionStop,
   Station,
 } from '../../src/core/types';
+import { cellAt } from '../../src/core/types';
 import { setup } from '../../src/core/game';
 import { TUNING } from '../../src/config/tuning';
 import { P0_LEVEL } from '../../src/level/p0';
@@ -123,6 +124,19 @@ describe('P0 — fase «Contrato» (layout definitivo)', () => {
     expect(train?.color).toBe(station?.color);
     expect(train?.shape).toBe(station?.shape);
     expect(train?.entry).toEqual(pos(0, 1));
+  });
+
+  it('a cor do par trem/estação vem do tuning (§6, palette.pair)', () => {
+    const train = P0_LEVEL.trains[0];
+
+    expect(train?.color).toBe(TUNING.palette.pair);
+
+    const stationCell = cellAt(P0_LEVEL.board, pos(5, 1));
+
+    expect(stationCell).toMatchObject({
+      kind: 'fixed',
+      fixed: { kind: 'station', color: TUNING.palette.pair },
+    });
   });
 
   it('primeiro quadro: entrada → trem → previsão morre na peça do 1º giro (D6)', () => {
