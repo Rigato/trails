@@ -23,9 +23,7 @@ Colunas do tabuleiro (testar 6–8) · fórmula do bônus de trem · caso de bor
 | Arquivo | Papel |
 |---|---|
 | `gdd-trails.md` | Fonte única de verdade — decisões com [FECHADO] / [CONFIRMAR] / [A DEFINIR] |
-| `referencias-comparativas.md` | Estudo de Trainyard, Railbound, Pipe Mania, Mini Metro (+ lições do GDC de Trainyard/Cut the Rope) — **arquivo ausente da pasta** |
 | `plano-prototipo.md` | O que o protótipo precisa provar, em que ordem, e como ler os resultados |
-| `prompt-opencode.md` | Prompt pronto para o orquestrador (Opencode) criar o plano de implementação com subagentes — **arquivo ausente da pasta** |
 | `spec-tecnica-publicacao.md` | Referência técnica de publicação HTML5 (itch.io, GameFlare, Playgama, CrazyGames) — herdada do Bricklike; requisitos e features a considerar na implementação pensando na publicação |
 
 ## Como trabalhar neste projeto
