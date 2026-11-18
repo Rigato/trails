@@ -2,14 +2,16 @@
  * Locomotiva: corpo arredondado + símbolo da forma (GDD §5).
  *
  * A cor do par vem do dado (`train.color`); a forma é o segundo canal de
- * acessibilidade. O corpo aponta a direção de deslocamento (`incoming` para
- * trem em campo, `direction` para trem ainda fora da grade), mas o símbolo é
+ * acessibilidade. O corpo aponta a direção de deslocamento, mas o símbolo é
  * desenhado de pé — orientação não pode custar legibilidade da forma.
+ *
+ * O desenho é exposto por posição/ângulo/escala (não por célula) porque o E3
+ * interpola o trem entre duas células e o E3 também desenha o fantasma da
+ * saída do descarrilamento.
  */
 
-import type { CellPos, Direction, Train } from '../core/types';
+import type { Direction, Train } from '../core/types';
 import { TUNING } from '../config/tuning';
-import { cellCenter, type SceneLayout } from './layout';
 import { drawShapeSymbol } from './symbol';
 
 const PALETTE = TUNING.palette;
@@ -22,44 +24,51 @@ const DIRECTION_ANGLE: Readonly<Record<Direction, number>> = {
   north: -Math.PI / 2,
 };
 
-/** Desenha o trem se ele está em campo; entregue/descarrilado não aparece. */
-export function drawTrain(
-  ctx: CanvasRenderingContext2D,
-  layout: SceneLayout,
-  train: Train,
-): void {
-  const status = train.status;
-  let cell: CellPos;
-  let direction: Direction;
+/** Ângulo (radianos) do corpo para uma direção de deslocamento. */
+export function directionAngle(direction: Direction): number {
+  return DIRECTION_ANGLE[direction];
+}
 
-  if (status.kind === 'waiting') {
-    cell = status.cell;
-    direction = status.direction;
-  } else if (status.kind === 'running') {
-    cell = status.cell;
-    direction = status.incoming;
-  } else {
+/**
+ * Desenha o trem centrado em (x, y) px CSS, girado por `angle`.
+ *
+ * `scale` e `alpha` existem para a interpolação e para o fantasma do
+ * descarrilamento; o símbolo acompanha a mesma transformação para o trem não
+ * «desmontar» ao encolher.
+ */
+export function drawTrainAt(
+  ctx: CanvasRenderingContext2D,
+  cellSize: number,
+  train: Train,
+  x: number,
+  y: number,
+  angle: number,
+  scale = 1,
+  alpha = 1,
+): void {
+  if (cellSize <= 0 || alpha <= 0 || scale <= 0) {
     return;
   }
 
-  const center = cellCenter(layout, cell);
-  const cellSize = layout.cell;
   const length = cellSize * TUNING.trainSizeRatio;
   const width = length * 0.78;
   const radius = width * 0.34;
   const nose = length * 0.1;
 
   ctx.save();
-  ctx.translate(center.x, center.y);
-  ctx.rotate(DIRECTION_ANGLE[direction]);
+  ctx.globalAlpha *= alpha;
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+
+  // Corpo e bico giram com a direção de viagem.
+  ctx.save();
+  ctx.rotate(angle);
   ctx.fillStyle = train.color;
 
-  // Corpo.
   ctx.beginPath();
   ctx.roundRect(-length / 2, -width / 2, length, width, radius);
   ctx.fill();
 
-  // Bico: ponta à frente do corpo, mesma cor — silhueta indica o sentido.
   ctx.beginPath();
   ctx.moveTo(length / 2 - radius * 0.35, -width * 0.34);
   ctx.lineTo(length / 2 + nose, 0);
@@ -68,12 +77,15 @@ export function drawTrain(
   ctx.fill();
   ctx.restore();
 
+  // Símbolo sempre de pé (acessibilidade, GDD §5).
   drawShapeSymbol(
     ctx,
     train.shape,
-    center.x,
-    center.y,
+    0,
+    0,
     cellSize * TUNING.symbolSizeRatio,
     PALETTE.background,
   );
+
+  ctx.restore();
 }

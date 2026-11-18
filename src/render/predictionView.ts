@@ -2,17 +2,29 @@
  * Previsão de trajetória (GDD §3.8): pontilhado na cor do trem a 55%, do ponto
  * atual até o primeiro ponto de parada.
  *
- * O pontilhado segue a geometria REAL das peças (`tracePiecePath`) em vez de
- * ligar centros de célula — a rota parece trilho, não um atalho. A parada tem
- * aparência própria: anel na estação certa, X na estação errada, seta na borda,
- * sinal de proibido em célula sem saída e anel com marcador no loop (D2).
+ * O traçado é UM caminho contínuo pela rota — arcos e retas com a mesma
+ * geometria canônica das peças — para os pontinhos «marcharem» de célula em
+ * célula sem reiniciar a fase a cada célula. A «marcha» anda pelo offset do
+ * dash, derivado de `now` e de `predictionDashMs`: recalcular a previsão não
+ * reinicia a fase, então a linha não pisca.
+ *
+ * A parada tem aparência própria: anel na estação certa, X na estação errada,
+ * seta na borda, sinal de proibido em célula sem saída e anel com marcador no
+ * loop (D2).
  */
 
-import type { Board, Color, Direction, Prediction } from '../core/types';
-import { cellAt } from '../core/types';
+import type {
+  Board,
+  CellPos,
+  Color,
+  Direction,
+  Piece,
+  Prediction,
+} from '../core/types';
+import { cellAt, directionOffset, opposite, turnClockwise } from '../core/types';
 import { TUNING } from '../config/tuning';
 import { cellCenter, type SceneLayout } from './layout';
-import { tracePiecePath } from './pieces';
+import { directionAngle } from './train';
 
 const PALETTE = TUNING.palette;
 
@@ -20,21 +32,229 @@ const PALETTE = TUNING.palette;
 const MIN_STROKE = 2;
 /** Opacidade dos marcadores de parada: mais visíveis que o pontilhado. */
 const STOP_ALPHA = 0.82;
+/** Comprimento do «ponto»: ~0 com lineCap redondo. */
+const DOT_LENGTH = 0.01;
+/** Espaçamento entre pontos como fração da célula. */
+const DOT_GAP_RATIO = 0.16;
 
 interface Point {
   readonly x: number;
   readonly y: number;
 }
 
-function midpoint(a: Point, b: Point): Point {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+/** Direção de uma célula para a vizinha (um passo), ou `undefined`. */
+function directionBetween(from: CellPos, to: CellPos): Direction | undefined {
+  const dc = to.col - from.col;
+  const dr = to.row - from.row;
+
+  if (dc === 1 && dr === 0) {
+    return 'east';
+  }
+  if (dc === -1 && dr === 0) {
+    return 'west';
+  }
+  if (dc === 0 && dr === 1) {
+    return 'south';
+  }
+  if (dc === 0 && dr === -1) {
+    return 'north';
+  }
+
+  return undefined;
+}
+
+/**
+ * Os dois lados conectados de uma peça, na convenção do core.
+ *
+ * Reta rot 0: N–S; rot 1: L–O. Curva rot 0: N–L; cada quarto CW gira os dois
+ * lados juntos.
+ */
+function pieceSides(piece: Piece): readonly [Direction, Direction] {
+  if (piece.kind === 'straight') {
+    return piece.rot % 2 === 0 ? ['north', 'south'] : ['east', 'west'];
+  }
+
+  let first: Direction = 'north';
+  let second: Direction = 'east';
+
+  for (let turn = 0; turn < piece.rot; turn += 1) {
+    first = turnClockwise(first);
+    second = turnClockwise(second);
+  }
+
+  return [first, second];
+}
+
+/** Ponto médio da borda da célula no lado `side`. */
+function edgePoint(center: Point, side: Direction, half: number): Point {
+  const offset = directionOffset(side);
+
+  return {
+    x: center.x + offset.col * half,
+    y: center.y + offset.row * half,
+  };
+}
+
+/**
+ * Curva a 90° da fase do dash: a marcha anda **uma célula por
+ * `predictionDashMs`**. O offset é reduzido ao ciclo do padrão (que é
+ * periódico), então o movimento é contínuo e não há salto no fim do período.
+ */
+function dashOffset(cellSize: number, now: number): number {
+  const period = TUNING.predictionDashMs;
+  const gap = cellSize * DOT_GAP_RATIO;
+  const cycle = DOT_LENGTH + gap;
+
+  if (!(period > 0) || !Number.isFinite(period) || !(cycle > 0)) {
+    return 0;
+  }
+
+  const travel = (now / period) * cellSize;
+  return -(travel % cycle);
+}
+
+/**
+ * Constrói o caminho único da previsão no contexto corrente.
+ *
+ * Cada célula contribui com o trecho que o trem percorreria: a peça inteira
+ * (reta ou arco), a ligação entre bordas de uma célula sem peça, ou o trecho
+ * até o centro quando a rota morre sem saída. A estação não recebe pontilhado:
+ * o marcador de parada fala por ela.
+ */
+function tracePredictionRoute(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  board: Board,
+  prediction: Prediction,
+): void {
+  const { path } = prediction;
+  const lastIndex = path.length - 1;
+
+  if (lastIndex < 0) {
+    return;
+  }
+
+  const half = layout.cell / 2;
+  let cursor: Point | null = null;
+
+  /** Posiciona o «lápis» sem quebrar a continuidade do traço. */
+  function place(point: Point): void {
+    if (cursor === null) {
+      ctx.moveTo(point.x, point.y);
+    } else if (
+      Math.abs(cursor.x - point.x) > 0.01 ||
+      Math.abs(cursor.y - point.y) > 0.01
+    ) {
+      ctx.lineTo(point.x, point.y);
+    }
+
+    cursor = point;
+  }
+
+  function lineTo(point: Point): void {
+    ctx.lineTo(point.x, point.y);
+    cursor = point;
+  }
+
+  for (let index = 0; index <= lastIndex; index += 1) {
+    const cell = path[index];
+
+    if (cell === undefined) {
+      continue;
+    }
+
+    const content = cellAt(board, cell);
+    const center = cellCenter(layout, cell);
+    const previous = index > 0 ? path[index - 1] : undefined;
+    const next = index < lastIndex ? path[index + 1] : undefined;
+    const entrySide = previous ? directionBetween(cell, previous) : undefined;
+    const exitSide = next ? directionBetween(cell, next) : undefined;
+
+    if (content?.kind === 'fixed' && content.fixed.kind === 'station') {
+      // A rota termina na borda da estação; o marcador de parada fala por ela.
+      continue;
+    }
+
+    if (content?.kind === 'piece') {
+      const sides = pieceSides(content.piece);
+      const entry =
+        entrySide ??
+        (exitSide !== undefined && sides[0] === exitSide ? sides[1] : sides[0]);
+      const exit =
+        exitSide ?? (entry === sides[0] ? sides[1] : sides[0]);
+
+      // Rota que morre dentro da peça: só o trecho da entrada até o centro.
+      if (!next && prediction.stop.kind === 'noExit') {
+        if (previous !== undefined) {
+          const entryPoint = edgePoint(center, entry, half);
+          place(entryPoint);
+          lineTo(center);
+        }
+        continue;
+      }
+
+      const entryPoint = edgePoint(center, entry, half);
+      const exitPoint = edgePoint(center, exit, half);
+      place(entryPoint);
+
+      if (entry === opposite(exit)) {
+        lineTo(exitPoint);
+        continue;
+      }
+
+      if (entry !== exit) {
+        const entryOffset = directionOffset(entry);
+        const exitOffset = directionOffset(exit);
+        const corner: Point = {
+          x: center.x + (entryOffset.col + exitOffset.col) * half,
+          y: center.y + (entryOffset.row + exitOffset.row) * half,
+        };
+        const startAngle = Math.atan2(
+          entryPoint.y - corner.y,
+          entryPoint.x - corner.x,
+        );
+        const endAngle = Math.atan2(
+          exitPoint.y - corner.y,
+          exitPoint.x - corner.x,
+        );
+        let delta = endAngle - startAngle;
+
+        while (delta > Math.PI) {
+          delta -= Math.PI * 2;
+        }
+        while (delta < -Math.PI) {
+          delta += Math.PI * 2;
+        }
+
+        ctx.arc(corner.x, corner.y, half, startAngle, startAngle + delta, delta < 0);
+        cursor = exitPoint;
+        continue;
+      }
+
+      lineTo(exitPoint);
+      continue;
+    }
+
+    // Célula sem peça: liga as bordas médias (ou o centro, nas pontas).
+    const entryPoint = entrySide ? edgePoint(center, entrySide, half) : center;
+    const exitPoint = exitSide ? edgePoint(center, exitSide, half) : center;
+
+    place(entryPoint);
+
+    if (
+      Math.abs(exitPoint.x - entryPoint.x) > 0.01 ||
+      Math.abs(exitPoint.y - entryPoint.y) > 0.01
+    ) {
+      lineTo(exitPoint);
+    }
+  }
 }
 
 /**
  * Desenha a previsão de um trem.
  *
  * O trajeto já vem do core; o render só escolhe a geometria de cada célula e
- * o marcador do ponto de parada.
+ * o marcador do ponto de parada. `now` move a marcha dos pontinhos.
  */
 export function drawPrediction(
   ctx: CanvasRenderingContext2D,
@@ -42,6 +262,7 @@ export function drawPrediction(
   board: Board,
   prediction: Prediction,
   color: Color,
+  now: number,
 ): void {
   const path = prediction.path;
   const lastIndex = path.length - 1;
@@ -59,76 +280,18 @@ export function drawPrediction(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // Pontilhado: pontos redondos (traço de comprimento ~0 + lineCap round).
+  // Marcha contínua: um único caminho + offset de dash dependente do relógio.
   ctx.globalAlpha = PALETTE.predictionAlpha;
   ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.07);
-  ctx.setLineDash([0.01, cellSize * 0.16]);
+  ctx.setLineDash([DOT_LENGTH, cellSize * DOT_GAP_RATIO]);
+  ctx.lineDashOffset = dashOffset(cellSize, now);
 
-  for (let index = 0; index < path.length; index += 1) {
-    const cell = path[index];
-
-    if (!cell) {
-      continue;
-    }
-
-    const content = cellAt(board, cell);
-    const x = layout.board.x + cell.col * cellSize;
-    const y = layout.board.y + cell.row * cellSize;
-
-    if (content?.kind === 'piece') {
-      if (index === lastIndex && prediction.stop.kind === 'noExit') {
-        // A rota morre nesta célula (entrou pelo lado errado): o traço vai da
-        // borda de entrada ao centro. Desenhar a peça inteira prometeria uma
-        // saída que o trem não tem.
-        const previous = index > 0 ? path[index - 1] : undefined;
-
-        if (previous !== undefined) {
-          const center = cellCenter(layout, cell);
-          const entry = midpoint(cellCenter(layout, previous), center);
-          ctx.beginPath();
-          ctx.moveTo(entry.x, entry.y);
-          ctx.lineTo(center.x, center.y);
-          ctx.stroke();
-        }
-      } else {
-        // O trecho inteiro da peça; pontas coincidem com as células vizinhas.
-        tracePiecePath(ctx, content.piece, x, y, cellSize);
-        ctx.stroke();
-      }
-      continue;
-    }
-
-    if (content?.kind === 'fixed' && content.fixed.kind === 'station') {
-      // A rota termina na borda da estação; o marcador de parada fala por ela.
-      continue;
-    }
-
-    const center = cellCenter(layout, cell);
-    const previous = index > 0 ? path[index - 1] : undefined;
-    const next = index < lastIndex ? path[index + 1] : undefined;
-
-    ctx.beginPath();
-
-    if (previous) {
-      const entry = midpoint(cellCenter(layout, previous), center);
-      ctx.moveTo(entry.x, entry.y);
-      ctx.lineTo(center.x, center.y);
-
-      if (next) {
-        const exit = midpoint(center, cellCenter(layout, next));
-        ctx.lineTo(exit.x, exit.y);
-      }
-    } else if (next) {
-      // Trem waiting na célula de entrada: a rota parte do centro para dentro.
-      const exit = midpoint(center, cellCenter(layout, next));
-      ctx.moveTo(center.x, center.y);
-      ctx.lineTo(exit.x, exit.y);
-    }
-
-    ctx.stroke();
-  }
+  ctx.beginPath();
+  tracePredictionRoute(ctx, layout, board, prediction);
+  ctx.stroke();
 
   ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
   ctx.globalAlpha = STOP_ALPHA;
   drawStopMarker(ctx, layout, prediction, color);
 
@@ -221,20 +384,6 @@ function drawStopMarker(
       ctx.strokeRect(center.x - half, center.y - half, half * 2, half * 2);
       break;
     }
-  }
-}
-
-/** Ângulo do eixo +x para uma direção de deslocamento. */
-function directionAngle(direction: Direction): number {
-  switch (direction) {
-    case 'east':
-      return 0;
-    case 'south':
-      return Math.PI / 2;
-    case 'west':
-      return Math.PI;
-    case 'north':
-      return -Math.PI / 2;
   }
 }
 

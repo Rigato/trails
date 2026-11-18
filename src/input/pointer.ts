@@ -8,9 +8,11 @@
  */
 
 import type { Action } from '../core/types';
+import { fullWidthHudButton } from '../render/hud';
 import {
   cellAtPoint,
   hudTargetAtPoint,
+  type Rect,
   type SceneLayout,
 } from '../render/layout';
 
@@ -22,6 +24,20 @@ export interface PointerInputHandlers {
   readonly onAction: (action: Action) => void;
   /** «Recomeçar»: restaura o estado inicial do layout. */
   readonly onReset: () => void;
+  /**
+   * A run terminou? Quando sim, o HUD mostra um único botão de largura total
+   * (D1/D5) e qualquer toque dentro dele reinicia — inclusive no vão central.
+   */
+  readonly isFinished?: () => boolean;
+}
+
+function containsPoint(rect: Rect, x: number, y: number): boolean {
+  return (
+    x >= rect.x &&
+    x < rect.x + rect.width &&
+    y >= rect.y &&
+    y < rect.y + rect.height
+  );
 }
 
 /**
@@ -51,6 +67,11 @@ export function attachPointerInput(
     const layout = handlers.getLayout();
     const x = (event.clientX - rect.left) * (layout.width / rect.width);
     const y = (event.clientY - rect.top) * (layout.height / rect.height);
+
+    if (handlers.isFinished?.() && containsPoint(fullWidthHudButton(layout), x, y)) {
+      handlers.onReset();
+      return;
+    }
 
     const hudTarget = hudTargetAtPoint(layout, x, y);
 

@@ -4,6 +4,10 @@
  * A orientação canônica é a do contrato (`core/types.ts`): reta rot 0 = N–S;
  * curva rot 0 = N–E; `rot` é quarto de volta no sentido horário. O desenho
  * aplica a mesma rotação de contexto, então render e regra não podem divergir.
+ *
+ * `angleRad` opcional é o gancho do E3: durante o giro animado a peça é
+ * desenhada num ângulo contínuo (fora dos múltiplos de 90°) sem que a regra
+ * saiba da animação.
  */
 
 import type { Piece } from '../core/types';
@@ -14,8 +18,9 @@ const MIN_TRACK_WIDTH = 2;
 
 /**
  * Constrói o traçado canônico de uma peça no contexto atual, sem espessura nem
- * cor. O chamador decide o stroke — o desenho da peça e a previsão pontilhada
- * compartilham a MESMA geometria, então a rota nunca «descola» do trilho.
+ * cor. O chamador decide o stroke. A previsão pontilhada reconstrói a mesma
+ * geometria canônica (reta entre bordas opostas; arco no canto) em um caminho
+ * contínuo, então a rota nunca «descola» do trilho.
  */
 export function tracePiecePath(
   ctx: CanvasRenderingContext2D,
@@ -23,12 +28,13 @@ export function tracePiecePath(
   x: number,
   y: number,
   cell: number,
+  angleRad: number = (piece.rot * Math.PI) / 2,
 ): void {
   const half = cell / 2;
 
   ctx.save();
   ctx.translate(x + half, y + half);
-  ctx.rotate((piece.rot * Math.PI) / 2);
+  ctx.rotate(angleRad);
   ctx.translate(-half, -half);
 
   ctx.beginPath();
@@ -51,6 +57,7 @@ export function tracePiecePath(
  *
  * Reta: traço dos dois lados opostos (N–S canônico). Curva: arco de um quarto
  * de volta que encosta no canto entre os dois lados conectados (N–E canônico).
+ * `angleRad` permite o giro animado do E3.
  */
 export function drawPiece(
   ctx: CanvasRenderingContext2D,
@@ -59,11 +66,12 @@ export function drawPiece(
   y: number,
   cell: number,
   color: string,
+  angleRad?: number,
 ): void {
   const lineWidth = Math.max(MIN_TRACK_WIDTH, cell * TUNING.trackWidthRatio);
 
   ctx.save();
-  tracePiecePath(ctx, piece, x, y, cell);
+  tracePiecePath(ctx, piece, x, y, cell, angleRad);
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.lineCap = 'butt';

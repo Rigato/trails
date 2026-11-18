@@ -3,6 +3,10 @@
  *
  * Tudo geometria desenhada por código. A estação usa cor + forma redundantes
  * (GDD §5) e a entrada é marcada na borda apontando para dentro (GDD §3.4).
+ *
+ * O E3 acrescenta dois ganchos de animação, ambos opcionais: o ângulo contínuo
+ * de uma peça girando e a escala da estação durante o pulse de entrega. O
+ * estado continua sendo o snapshot do core; os overrides só existem no quadro.
  */
 
 import type { Board, Entry, Station } from '../core/types';
@@ -21,11 +25,17 @@ const GRID_LINE_WIDTH = 1;
  *
  * A ordem importa: peças por cima das linhas; a estação e a entrada são
  * elementos fixos e nunca giram.
+ *
+ * `pieceAngles` mapeia `cellKey` → ângulo em radianos (giro animado) e
+ * `stationScales` mapeia `cellKey` → escala (pulse de entrega). Mapas ausentes
+ * ou vazios desenham o estado repousado.
  */
 export function drawBoard(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
   board: Board,
+  pieceAngles?: ReadonlyMap<string, number>,
+  stationScales?: ReadonlyMap<string, number>,
 ): void {
   drawGrid(ctx, layout);
 
@@ -39,12 +49,28 @@ export function drawBoard(
 
       const x = layout.board.x + col * layout.cell;
       const y = layout.board.y + row * layout.cell;
+      const key = `${col}:${row}`;
 
       if (content.kind === 'piece') {
-        drawPiece(ctx, content.piece, x, y, layout.cell, PALETTE.track);
+        drawPiece(
+          ctx,
+          content.piece,
+          x,
+          y,
+          layout.cell,
+          PALETTE.track,
+          pieceAngles?.get(key),
+        );
       } else if (content.kind === 'fixed') {
         if (content.fixed.kind === 'station') {
-          drawStation(ctx, content.fixed, x, y, layout.cell);
+          drawStation(
+            ctx,
+            content.fixed,
+            x,
+            y,
+            layout.cell,
+            stationScales?.get(key) ?? 1,
+          );
         } else {
           drawEntry(ctx, content.fixed, x, y, layout.cell);
         }
@@ -93,6 +119,9 @@ function drawGrid(ctx: CanvasRenderingContext2D, layout: SceneLayout): void {
  * Estação em forma de casa: telhado triangular + bloco arredondado, na cor do
  * par, com o símbolo da forma vazado no centro. O símbolo é o canal redundante
  * à cor (daltonismo, GDD §5).
+ *
+ * `scale` > 1 é o pulse de entrega (D5), aplicado em volta do centro da célula
+ * para a casa crescer sem sair do lugar.
  */
 function drawStation(
   ctx: CanvasRenderingContext2D,
@@ -100,6 +129,7 @@ function drawStation(
   x: number,
   y: number,
   cell: number,
+  scale: number,
 ): void {
   const size = cell * TUNING.stationInsetRatio;
   const cx = x + cell / 2;
@@ -112,6 +142,13 @@ function drawStation(
   const bodyRadius = Math.min(cell * 0.08, size * 0.14);
 
   ctx.save();
+
+  if (scale !== 1) {
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -cy);
+  }
+
   ctx.fillStyle = station.color;
 
   // Telhado.

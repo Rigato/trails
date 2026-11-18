@@ -1,10 +1,10 @@
 /**
- * HUD mínimo desenhado no canvas: cabeçalho (fase, passo, estado) e os dois
- * botões de 44 pt do E2 — «Passar turno» e «Recomeçar».
+ * HUD mínimo desenhado no canvas: cabeçalho (fase, passo, estado) e os botões.
  *
- * Sem ícones, sem menu: a única função do HUD nesta fase é dar acesso ao passo
- * sem peça e ao recomeço instantâneo, além de não deixar o estado final
- * («entregue» / sem trem) invisível.
+ * Em jogo, os dois botões de 44 pt são «Passar turno» e «Recomeçar». Quando a
+ * run termina, os dois viram UM botão de largura total: «Jogar de novo» na
+ * vitória (D5) e «Recomeçar» no estado sem trem ativo (D1). O caminho para
+ * rejogar fica óbvio sem menu — é o sinal de sucesso do P0.
  */
 
 import type { GameState } from '../core/types';
@@ -15,6 +15,22 @@ const PALETTE = TUNING.palette;
 const FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const HEADER_ALPHA = 0.82;
 
+/**
+ * Retângulo do botão único de fim de run: a união dos dois botões, incluindo o
+ * vão central. Exportado para o hit-test do input usar exatamente a mesma área
+ * que o desenho.
+ */
+export function fullWidthHudButton(layout: SceneLayout): Rect {
+  const left = layout.passButton;
+  const right = layout.resetButton;
+  const x = Math.min(left.x, right.x);
+  const y = Math.min(left.y, right.y);
+  const rightEdge = Math.max(left.x + left.width, right.x + right.width);
+  const bottom = Math.max(left.y + left.height, right.y + right.height);
+
+  return { x, y, width: rightEdge - x, height: bottom - y };
+}
+
 /** Desenha o cabeçalho e os botões do HUD. */
 export function drawHud(
   ctx: CanvasRenderingContext2D,
@@ -23,15 +39,25 @@ export function drawHud(
   levelName: string,
 ): void {
   drawHeader(ctx, layout, state, levelName);
+
+  if (state.status === 'won' || state.status === 'deadEnd') {
+    const winner = state.trains.find((train) => train.status.kind === 'delivered');
+    const accent = state.status === 'won' ? (winner?.color ?? PALETTE.pair) : undefined;
+
+    drawButton(
+      ctx,
+      layout,
+      fullWidthHudButton(layout),
+      state.status === 'won' ? 'Jogar de novo' : 'Recomeçar',
+      true,
+      true,
+      accent,
+    );
+    return;
+  }
+
   drawButton(ctx, layout, layout.resetButton, 'Recomeçar', false, true);
-  drawButton(
-    ctx,
-    layout,
-    layout.passButton,
-    'Passar turno',
-    true,
-    state.status !== 'won' && state.status !== 'deadEnd',
-  );
+  drawButton(ctx, layout, layout.passButton, 'Passar turno', true, true);
 }
 
 function drawHeader(
@@ -82,6 +108,7 @@ function drawButton(
   label: string,
   primary: boolean,
   enabled: boolean,
+  accent?: string,
 ): void {
   const radius = rect.height * 0.3;
 
@@ -92,7 +119,7 @@ function drawButton(
   ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
 
   if (primary) {
-    ctx.fillStyle = PALETTE.track;
+    ctx.fillStyle = accent ?? PALETTE.track;
     ctx.fill();
     ctx.fillStyle = PALETTE.background;
   } else {
