@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveStep } from '../../src/core/step';
 import type { TrainStatus } from '../../src/core/types';
 import { TUNING } from '../../src/config/tuning';
-import { P3_DRAFT } from '../../src/level/p3';
+import { P3_LEVEL } from '../../src/level/p3';
 import {
   derailProgress,
   derailVisuals,
@@ -64,7 +64,7 @@ describe('túnel — fade em dois tempos (E18)', () => {
 });
 
 describe('túnel — classificação geométrica do movimento (E18)', () => {
-  const level = P3_DRAFT;
+  const level = P3_LEVEL;
 
   it('entrada, travessia e saída do par da Densidade', () => {
     expect(tunnelMotion(level.board, pos(0, 4), pos(1, 4))).toBe('enter');
@@ -83,7 +83,7 @@ describe('túnel — classificação geométrica do movimento (E18)', () => {
 });
 
 describe('túnel — o trem fica escondido entre os dois tempos (E18)', () => {
-  const level = P3_DRAFT;
+  const level = P3_LEVEL;
 
   it('running sem justTunneled no portal = dentro do túnel', () => {
     const inside: TrainStatus = {

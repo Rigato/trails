@@ -386,13 +386,19 @@ describe('P3 «Densidade» — contrato do dado (3 trens)', () => {
     }
   });
 
-  it('primeiro quadro: vermelho na montanha, verde no vazio, azul em @; sem hint D6', () => {
+  it('primeiro quadro (core): vermelho na montanha, verde no vazio, azul em @; sem hint D6', () => {
     const game = setup(P3_LEVEL);
     const predictions = predictionsOf(game);
     const red = predictions.find((prediction) => prediction.trainId === 'red');
     const blue = predictions.find((prediction) => prediction.trainId === 'blue');
     const green = predictions.find((prediction) => prediction.trainId === 'green');
 
+    // Este assert é do CORE, que calcula o path completo. No render com
+    // horizonte D21 (6 células) o path do vermelho (10 células) é truncado e
+    // o marcador de parada não é desenhado no primeiro quadro: a montanha e o
+    // Y vermelho aparecem no tabuleiro, e o marcador remoto vira descoberta
+    // quando o trem entra na janela («morte local anunciada, remota vira
+    // descoberta»).
     expect(game.state.step).toBe(0);
     expect(game.state.status).toBe('ready');
     expect(game.state.lives).toBe(3);

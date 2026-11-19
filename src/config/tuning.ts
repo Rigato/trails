@@ -106,7 +106,7 @@ export interface Tuning {
   readonly lifeLostPulseMs: number;
   /** Saída visual do trem descarrilado (D1). */
   readonly derailExitMs: number;
-  /** Fade de entrada/saída do trem no túnel (E18); limitado por `stepDurationMs`. */
+  /** Fade de entrada/saída do trem no túnel (E18); 160 ms truncado por `stepDurationMs` — nunca sobrevive ao passo, como `yToggleMs`. */
   readonly tunnelFadeMs: number;
   /** Pulso contínuo na peça do primeiro giro (D6), até a primeira ação. */
   readonly firstHintPulseMs: number;

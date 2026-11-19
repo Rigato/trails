@@ -10,10 +10,15 @@
  * laço de 15 passos pelo topo/esquerda) e os outros dois são curtos e
  * separados (azul 6, verde 6). As janelas são reais e espaçadas: o azul cruza
  * o X no passo 3, o vermelho no 7 (4 passos); o verde usa o túnel nos passos
- * 3–4 e o Y verde no 5; o vermelho usa o Y vermelho no 9. O primeiro quadro
- * mostra DUAS previsões terminando em perigo (montanha no vermelho, vazio no
- * verde): são os dois Ys para corrigir. O Y vermelho é a lição da montanha; o
- * Y verde é a lição do braço errado.
+ * 3–4 e o Y verde no 5; o vermelho usa o Y vermelho no 9. O tabuleiro do
+ * primeiro quadro já mostra a montanha e os dois Ys; o verde tem uma previsão
+ * curta terminando no vazio, e o vermelho tem a montanha como braço fatal.
+ * LEITURA VISUAL (D21): o horizonte é de 6 células; o path completo do
+ * vermelho (10 células) é truncado e o marcador de parada não aparece no
+ * primeiro quadro. A montanha e o Y vermelho estão no TABULEIRO; o marcador
+ * vira descoberta quando o trem entra na janela — «morte local anunciada,
+ * remota vira descoberta» (designer). O verde é a lição do braço errado; o
+ * vermelho é a lição da montanha.
  *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
@@ -35,8 +40,10 @@
  *   (0,0) → (0,1) → (0,2) → (0,3) → (1,3) → (1,2) → X (2,2) → (3,2) →
  *   Y (4,2) → (4,1) → (3,1) → (3,0) → (4,0) → (5,0) → @ (5,1) [15].
  *   O Y vermelho é OBRIGATÓRIO: o braço 0 (N) leva a (4,1) e o laço; o braço 1
- *   (S) cai na montanha (4,3). O Y nasce no braço 1 — a primeira previsão do
- *   vermelho termina na montanha. O toque no Y (passo 9 ou antes) conserta.
+ *   (S) cai na montanha (4,3). O Y nasce no braço 1 — no CORE a primeira
+ *   previsão do vermelho termina na montanha; no render D21 o laço é truncado
+ *   e o marcador só surge quando o trem entra na janela. O toque no Y (passo 9
+ *   ou antes) conserta.
  *
  * O AZUL
  *   (2,0) → (2,1) → X (2,2) → (2,3) → (2,4) → @ (2,5) [6]. Cruza o X no 3.
@@ -73,7 +80,9 @@
  *   Por que o toggle vermelho no 9: o Y nasce no braço fatal e o vermelho só
  *   chega nele no 9. O jogador pode consertar antes (o braço fica); a solução
  *   oficial demonstra a janela encadeada — verde cedo, vermelho na boca do Y.
- *   O primeiro quadro já pinta a montanha; corrigir os dois Ys é a leitura.
+ *   O primeiro quadro já mostra a montanha e o Y vermelho no tabuleiro; o
+ *   marcador remoto do vermelho é descoberto na janela. Corrigir os dois Ys é
+ *   a leitura.
  *
  * SACRIFÍCIO / FALHAS
  *   - MONTANHA (vermelho, Y esquecido): sem o toggle (4,2), o vermelho entra no
@@ -103,7 +112,8 @@
  * NOTAS
  *   - 2 Ys (ambos usados, ambos com braço fatal), 1 X, 1 par de túneis, 1
  *     montanha, 3 estações e 3 moedas. 6×6; todos entram no passo 1; 3 vidas;
- *     sem hint novo (o primeiro quadro termina em estação/montanha/vazio;
+ *     sem hint novo (no CORE o primeiro quadro termina em
+ *     estação/montanha/vazio; no render D21 o path vermelho é truncado;
  *     `firstHintTarget` é null porque nenhuma previsão para em peça).
  *   - A montanha é alcançável de propósito: só o braço S do Y vermelho leva a
  *     ela. Sem essa rota o fixo seria decoração — a falha da montanha é a
@@ -235,11 +245,3 @@ export const P3_LEVEL: LevelLayout = {
     },
   ],
 };
-
-/**
- * Alias de compatibilidade para o teste de feel do E18 (`test/feel/p3-fx.test.ts`),
- * que ainda importa o nome do rascunho. O tabuleiro é o definitivo e os dois
- * portais do túnel continuam em (1,4)↔(4,4); o alias pode ser removido quando o
- * orquestrador atualizar aquele teste para `P3_LEVEL`.
- */
-export const P3_DRAFT = P3_LEVEL;
