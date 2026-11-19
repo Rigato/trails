@@ -20,7 +20,7 @@ import type {
   LevelLayout,
   Train,
 } from './types';
-import { cellAt, cellKey, inBounds, neighbor } from './types';
+import { cellAt, cellKey, cellsEqual, inBounds, neighbor } from './types';
 import {
   classifyAction,
   isAdvancing,
@@ -200,8 +200,9 @@ function validateRiversAndBridges(board: Board): void {
 
 /**
  * Valida o overlay de moedas: dentro da grade, sem duplicar célula e sempre
- * sobre trilho (peça móvel ou ponte fixa). Rio, estação e vazio não recebem
- * moeda; a ponte recebe (é trilho de travessia e o rascunho P2 usa uma ali).
+ * sobre trilho (peça móvel, inclusive cruzamento, ou ponte fixa). Rio,
+ * montanha, túnel, estação e vazio não recebem moeda; a ponte recebe (é
+ * trilho de travessia e o rascunho P2 usa uma ali).
  */
 function validateCoins(layout: LevelLayout): void {
   if (layout.coins === undefined) {
@@ -239,13 +240,69 @@ function validateCoins(layout: LevelLayout): void {
 }
 
 /**
+ * Valida pares de portais de túnel.
+ *
+ * Cada portal declara `exit`; o parceiro precisa ser outro portal, dentro da
+ * grade, distinto e simétrico (`A.exit === B` e `B.exit === A`). O destino não
+ * pode ser estação, rio, ponte, montanha nem vazio. A direção preservada não
+ * exige alinhamento: o portal parceiro pode estar em qualquer célula; o que
+ * importa é a direção de deslocamento do trem.
+ */
+function validateTunnels(board: Board): void {
+  for (let row = 0; row < board.height; row += 1) {
+    for (let col = 0; col < board.width; col += 1) {
+      const content = cellAt(board, { col, row });
+
+      if (
+        content?.kind !== 'fixed' ||
+        content.fixed.kind !== 'tunnel'
+      ) {
+        continue;
+      }
+
+      const from = { col, row };
+      const exit = content.fixed.exit;
+
+      if (!inBounds(board, exit)) {
+        throw new Error(
+          `Layout inválido: o parceiro do túnel em (${col},${row}) está fora da grade.`,
+        );
+      }
+
+      if (cellsEqual(from, exit)) {
+        throw new Error(
+          `Layout inválido: o túnel em (${col},${row}) precisa apontar para outro portal.`,
+        );
+      }
+
+      const partner = cellAt(board, exit);
+
+      if (
+        partner?.kind !== 'fixed' ||
+        partner.fixed.kind !== 'tunnel'
+      ) {
+        throw new Error(
+          `Layout inválido: o túnel em (${col},${row}) precisa apontar para outro portal.`,
+        );
+      }
+
+      if (!cellsEqual(partner.fixed.exit, from)) {
+        throw new Error(
+          `Layout inválido: os portais do túnel em (${col},${row}) e (${exit.col},${exit.row}) precisam apontar um para o outro.`,
+        );
+      }
+    }
+  }
+}
+
+/**
  * Valida as invariantes do dado da fase.
  *
  * Cobre o que o motor assume: linhas do tamanho certo, ao menos um trem,
  * IDs únicos, primeira célula de entrada dentro da grade, na borda, apontando
- * para dentro e contendo uma peça de trilho, e uma célula de entrada distinta
- * por trem. Regras de design (uma estação por cor, etc.) ficam com o layout,
- * não com o motor.
+ * para dentro e contendo uma peça de trilho, uma célula de entrada distinta
+ * por trem, pares de túnel simétricos e moedas sobre trilho. Regras de design
+ * (uma estação por cor, etc.) ficam com o layout, não com o motor.
  */
 export function validateLayout(layout: LevelLayout): void {
   const { board } = layout;
@@ -287,6 +344,7 @@ export function validateLayout(layout: LevelLayout): void {
   }
 
   validateRiversAndBridges(board);
+  validateTunnels(board);
   validateCoins(layout);
 
   if (layout.trains.length === 0) {

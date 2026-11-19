@@ -74,6 +74,8 @@ interface Mover {
   readonly to: CellPos;
   readonly direction: Direction;
   readonly entersFromOutside: boolean;
+  /** `true` quando este movimento é a travessia A→B de um túnel. */
+  readonly tunneled: boolean;
   arrival: Arrival;
 }
 
@@ -87,8 +89,10 @@ interface DerailInfo {
  * O que acontece ao chegar em `destination` viajando na direção `direction`.
  *
  * Trem que chega a estação da cor certa é entregue; estação de cor errada
- * descarrila; vazio e peça sem conexão também descarriam. Peça com saída
- * continua `running` (a direção de saída só será usada no próximo passo).
+ * descarrila; vazio, montanha e peça sem conexão também descarriam. Peça com
+ * saída continua `running` (a direção de saída só será usada no próximo passo).
+ * Portal de túnel é uma parada intermediária: o trem fica nele e só atravessa
+ * no passo seguinte.
  */
 function resolveArrival(
   train: Train,
@@ -105,6 +109,14 @@ function resolveArrival(
     return { kind: 'derailed', reason: 'water' };
   }
 
+  if (destination.kind === 'fixed' && destination.fixed.kind === 'mountain') {
+    return { kind: 'derailed', reason: 'mountain' };
+  }
+
+  if (destination.kind === 'fixed' && destination.fixed.kind === 'tunnel') {
+    return { kind: 'running' };
+  }
+
   if (destination.kind === 'fixed' && destination.fixed.kind === 'bridge') {
     const exit = resolveCell(destination, direction);
 
@@ -116,7 +128,7 @@ function resolveArrival(
   if (destination.kind === 'piece') {
     const exit = resolveCell(destination, direction);
 
-    return exit.kind === 'exit'
+    return exit.kind === 'exit' || exit.kind === 'tunnel'
       ? { kind: 'running' }
       : { kind: 'derailed', reason: 'noExit' };
   }
@@ -172,6 +184,7 @@ export function resolveStep(
         to: status.cell,
         direction: status.direction,
         entersFromOutside: true,
+        tunneled: false,
         arrival: { kind: 'running' },
       };
 
@@ -191,7 +204,15 @@ export function resolveStep(
       continue;
     }
 
-    const exit = resolveCell(currentCell, status.incoming);
+    // Um trem que acabou de atravessar o túnel está sobre o portal parceiro:
+    // este passo é a SAÍDA pelo lado correspondente à direção preservada, não
+    // uma nova travessia de volta.
+    const exit =
+      currentCell.kind === 'fixed' &&
+      currentCell.fixed.kind === 'tunnel' &&
+      status.justTunneled === true
+        ? { kind: 'exit' as const, direction: status.incoming }
+        : resolveCell(currentCell, status.incoming);
 
     if (exit.kind === 'noExit') {
       derailById.set(train.id, {
@@ -207,6 +228,15 @@ export function resolveStep(
         at: status.cell,
         direction: status.incoming,
         reason: 'water',
+      });
+      continue;
+    }
+
+    if (exit.kind === 'mountain') {
+      derailById.set(train.id, {
+        at: status.cell,
+        direction: status.incoming,
+        reason: 'mountain',
       });
       continue;
     }
@@ -228,6 +258,22 @@ export function resolveStep(
       continue;
     }
 
+    if (exit.kind === 'tunnel') {
+      const mover: Mover = {
+        train,
+        from: status.cell,
+        to: exit.to,
+        direction: status.incoming,
+        entersFromOutside: false,
+        tunneled: true,
+        arrival: { kind: 'running' },
+      };
+
+      movers.push(mover);
+      moverById.set(train.id, mover);
+      continue;
+    }
+
     const next = neighbor(status.cell, exit.direction);
 
     if (!inBounds(state.board, next)) {
@@ -245,6 +291,7 @@ export function resolveStep(
       to: next,
       direction: exit.direction,
       entersFromOutside: false,
+      tunneled: false,
       arrival: { kind: 'running' },
     };
 
@@ -530,6 +577,7 @@ export function resolveStep(
           kind: 'running',
           cell: mover.to,
           incoming: mover.direction,
+          ...(mover.tunneled ? { justTunneled: true } : {}),
         },
       };
     }

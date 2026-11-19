@@ -25,6 +25,7 @@ export const DEFAULT_PREDICTION_STEPS = 24;
 interface StartState {
   readonly cell: CellPos;
   readonly incoming: Direction;
+  readonly justTunneled: boolean;
 }
 
 /**
@@ -40,9 +41,17 @@ interface StartState {
 function startState(train: Train): StartState | undefined {
   switch (train.status.kind) {
     case 'waiting':
-      return { cell: train.status.cell, incoming: train.status.direction };
+      return {
+        cell: train.status.cell,
+        incoming: train.status.direction,
+        justTunneled: false,
+      };
     case 'running':
-      return { cell: train.status.cell, incoming: train.status.incoming };
+      return {
+        cell: train.status.cell,
+        incoming: train.status.incoming,
+        justTunneled: train.status.justTunneled === true,
+      };
     case 'delivered':
     case 'derailed':
       return undefined;
@@ -58,9 +67,13 @@ function normalizeCap(maxSteps: number): number {
   return Math.max(1, Math.floor(maxSteps));
 }
 
-/** Chave de estado de loop: célula + direção de entrada (§3.8/D2). */
-function stateKey(cell: CellPos, incoming: Direction): string {
-  return `${cellKey(cell)}:${incoming}`;
+/** Chave de estado de loop: célula + direção de entrada + pós-túnel (§3.8/D2). */
+function stateKey(
+  cell: CellPos,
+  incoming: Direction,
+  justTunneled: boolean,
+): string {
+  return `${cellKey(cell)}:${incoming}:${justTunneled ? 't' : 'f'}`;
 }
 
 function finish(
@@ -83,7 +96,8 @@ function finish(
  * posição inicial (ou a primeira célula de trilho da entrada, para `waiting`)
  * e termina em `stop.cell`; em um loop, a última célula repete uma anterior com
  * a mesma direção de entrada e `loop` é `true`. `maxSteps` limita o número de
- * células do trajeto (default 24).
+ * células do trajeto (default 24). O trajeto atravessa pares de túnel
+ * (incluindo os dois portais) e para na montanha com `stop.kind:'mountain'`.
  */
 export function predictPath(
   board: Board,
@@ -98,10 +112,13 @@ export function predictPath(
 
   const cap = normalizeCap(maxSteps);
   const path: CellPos[] = [start.cell];
-  const visited = new Set<string>([stateKey(start.cell, start.incoming)]);
+  const visited = new Set<string>([
+    stateKey(start.cell, start.incoming, start.justTunneled),
+  ]);
 
   let current = start.cell;
   let incoming = start.incoming;
+  let justTunneled = start.justTunneled;
 
   for (;;) {
     const cell = cellAt(board, current);
@@ -110,7 +127,14 @@ export function predictPath(
       return finish(train, path, { kind: 'noExit', cell: current });
     }
 
-    const exit = resolveCell(cell, incoming);
+    // Trem que acabou de emergir do túnel sai pelo lado correspondente à
+    // direção preservada; não atravessa de volta.
+    const exit =
+      cell.kind === 'fixed' &&
+      cell.fixed.kind === 'tunnel' &&
+      justTunneled
+        ? { kind: 'exit' as const, direction: incoming }
+        : resolveCell(cell, incoming);
 
     if (exit.kind === 'noExit') {
       return finish(train, path, { kind: 'noExit', cell: current });
@@ -118,6 +142,10 @@ export function predictPath(
 
     if (exit.kind === 'water') {
       return finish(train, path, { kind: 'water', cell: current });
+    }
+
+    if (exit.kind === 'mountain') {
+      return finish(train, path, { kind: 'mountain', cell: current });
     }
 
     if (exit.kind === 'station') {
@@ -129,13 +157,17 @@ export function predictPath(
       return finish(train, path, { kind: 'station', cell: current, correct });
     }
 
-    const next = neighbor(current, exit.direction);
+    const next =
+      exit.kind === 'tunnel' ? exit.to : neighbor(current, exit.direction);
+    const nextIncoming =
+      exit.kind === 'tunnel' ? incoming : exit.direction;
+    const nextTunneled = exit.kind === 'tunnel';
 
     if (!inBounds(board, next)) {
       return finish(train, path, {
         kind: 'border',
         cell: current,
-        direction: exit.direction,
+        direction: nextIncoming,
       });
     }
 
@@ -172,17 +204,35 @@ export function predictPath(
       return finish(train, path, { kind: 'water', cell: next });
     }
 
-    const destinationExit = resolveCell(destination, exit.direction);
-
-    if (destinationExit.kind === 'water') {
-      return finish(train, path, { kind: 'water', cell: next });
+    if (
+      destination.kind === 'fixed' &&
+      destination.fixed.kind === 'mountain'
+    ) {
+      return finish(train, path, { kind: 'mountain', cell: next });
     }
 
-    if (destinationExit.kind !== 'exit') {
-      return finish(train, path, { kind: 'noExit', cell: next });
+    // Chegar a um portal é uma parada intermediária: o próximo laço resolve a
+    // travessia (ou a saída, se o trem acabou de emergir do parceiro).
+    if (
+      destination.kind !== 'fixed' ||
+      destination.fixed.kind !== 'tunnel'
+    ) {
+      const destinationExit = resolveCell(destination, nextIncoming);
+
+      if (destinationExit.kind === 'water') {
+        return finish(train, path, { kind: 'water', cell: next });
+      }
+
+      if (destinationExit.kind === 'mountain') {
+        return finish(train, path, { kind: 'mountain', cell: next });
+      }
+
+      if (destinationExit.kind !== 'exit') {
+        return finish(train, path, { kind: 'noExit', cell: next });
+      }
     }
 
-    const key = stateKey(next, exit.direction);
+    const key = stateKey(next, nextIncoming, nextTunneled);
 
     if (visited.has(key)) {
       return finish(train, path, { kind: 'loop', cell: next });
@@ -190,6 +240,7 @@ export function predictPath(
 
     visited.add(key);
     current = next;
-    incoming = exit.direction;
+    incoming = nextIncoming;
+    justTunneled = nextTunneled;
   }
 }

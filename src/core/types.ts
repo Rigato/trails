@@ -52,7 +52,7 @@ export interface CellPos {
 export type Rotation = 0 | 1 | 2 | 3;
 
 /** Tipo de peça móvel. */
-export type PieceKind = 'straight' | 'curve' | 'y';
+export type PieceKind = 'straight' | 'curve' | 'y' | 'crossing';
 
 /**
  * Reta: dois lados opostos.
@@ -117,6 +117,24 @@ export interface YPiece {
 }
 
 /**
+ * Cruzamento: quatro lados em dois canais retos independentes.
+ *
+ * Orientação canônica (`rot: 0`): N–S e E–W. Como os dois canais são
+ * perpendiculares, girar 90° troca os canais entre si sem mudar o conjunto de
+ * lados; `rot` existe para o dado/render, mas o movimento é sempre «entra por
+ * um lado, sai pelo oposto».
+ *
+ * O cruzamento NÃO gira: é uma peça sem ação (§3.2). Tocar nele produz
+ * `null/crossing` e não avança o passo (§3.3). Dois trens na mesma célula do
+ * cruzamento no mesmo passo colidem pela regra geral — o cruzamento não é
+ * zona segura (§3.10).
+ */
+export interface CrossingPiece {
+  readonly kind: 'crossing';
+  readonly rot: Rotation;
+}
+
+/**
  * Peça móvel de trilho.
  *
  * `rot` é o número de quartos de volta CW a partir da orientação canônica
@@ -128,12 +146,12 @@ export interface YPiece {
  * pelo lado `opposite(D)` e sai pelo outro lado conectado; a direção de saída
  * é o lado por onde ele sai. Exemplo: reta leste–oeste com trem viajando para
  * leste entra pelo lado oeste e sai para leste (não volta). Isso vale para
- * reta e curva; o Y tem três lados e fluxo próprio em `YPiece`.
+ * reta, curva e cruzamento; o Y tem três lados e fluxo próprio em `YPiece`.
  *
- * Y (P1) já é uma variante desta união. Cruzamento (P3) entra como nova
- * variante aditiva, com case novo em `movement.ts`/`actions.ts`.
+ * O cruzamento é a quarta variante: dois canais retos independentes, sem
+ * ação. Ele não entra em `rotatePieceCW`; `classifyTap` devolve `null/crossing`.
  */
-export type Piece = StraightPiece | CurvePiece | YPiece;
+export type Piece = StraightPiece | CurvePiece | YPiece | CrossingPiece;
 
 /**
  * Estação: elemento fixo que não gira.
@@ -194,12 +212,46 @@ export interface Bridge {
 }
 
 /**
+ * Túnel: par de portais fixos e simétricos.
+ *
+ * `exit` aponta para o outro portal do par; a validação exige
+ * `cell.exit === parceiro` e `parceiro.exit === cell` (simetria), portais
+ * dentro da grade, distintos e sem compartilhar célula com outro macro.
+ *
+ * O trem entra por um portal (chegada normal), fica nele por um passo e, no
+ * passo seguinte, é movido ao parceiro preservando a direção de deslocamento.
+ * Esse passo marca o trem como `justTunneled`; no parceiro, o passo seguinte
+ * sai pelo lado correspondente a essa direção (sem atravessar de volta). Se a
+ * célula vizinha não tiver trilho conectado, descarrila (`noExit`).
+ *
+ * A travessia custa um passo (o passo do portal A para o parceiro B). Dois
+ * trens em portais opostos que se movem um para o outro no mesmo passo trocam
+ * de célula e colidem pela regra geral (§3.10). Uma célula de portal comporta
+ * um trem por vez.
+ */
+export interface Tunnel {
+  readonly kind: 'tunnel';
+  readonly exit: CellPos;
+}
+
+/**
+ * Montanha: célula fixa intransponível.
+ *
+ * Não recebe trilho. Um trem que chega descarrila com `reason: 'mountain'`; a
+ * previsão para na montanha com `stop.kind: 'mountain'`, distinta de `noExit`
+ * (como a água). A montanha não participa de nenhuma ação.
+ */
+export interface Mountain {
+  readonly kind: 'mountain';
+}
+
+/**
  * Elemento fixo de uma célula.
  *
- * Hoje: estação, rio e ponte. Futuros elementos (montanha etc.) entram como
- * novas variantes, com case novo em `movement.ts`/`step.ts` e no render.
+ * Hoje: estação, rio, ponte, túnel e montanha. Novos elementos entram como
+ * variantes aditivas, com case novo em `movement.ts`/`step.ts` e no render.
  */
-export type Fixed = Station | River | Bridge;
+export type Fixed = Station | River | Bridge | Tunnel | Mountain;
 
 /** Célula vazia: nada transponível; trem que chega descarrila. */
 export interface EmptyCell {
@@ -212,7 +264,7 @@ export interface PieceCell {
   readonly piece: Piece;
 }
 
-/** Célula com elemento fixo (estação, rio, ponte ou futuro fixo). */
+/** Célula com elemento fixo (estação, rio, ponte, túnel ou montanha). */
 export interface FixedCell {
   readonly kind: 'fixed';
   readonly fixed: Fixed;
@@ -252,6 +304,7 @@ export type TrainId = string;
  *   direção de entrada);
  * - `water`: entrou em uma célula de rio (água); a ponte acessada fora do
  *   eixo é `noExit` (a ponte só conecta ao longo do eixo);
+ * - `mountain`: entrou em uma célula de montanha (intransponível);
  * - `wrongStation`: chegou a uma estação de cor diferente da sua;
  * - `collision`: colisão com outra locomotiva (mesma célula no mesmo passo ou
  *   troca de células no mesmo passo).
@@ -260,6 +313,7 @@ export type DerailReason =
   | 'offBoard'
   | 'noExit'
   | 'water'
+  | 'mountain'
   | 'wrongStation'
   | 'collision';
 
@@ -286,6 +340,12 @@ export type TrainStatus =
       readonly kind: 'running';
       readonly cell: CellPos;
       readonly incoming: Direction;
+      /**
+       * `true` somente no snapshot em que o trem acabou de atravessar um
+       * túnel: no próximo passo ele sai do portal na direção `incoming` em
+       * vez de atravessar de volta. Ausente/false nos demais casos.
+       */
+      readonly justTunneled?: boolean;
     }
   | { readonly kind: 'delivered' }
   | { readonly kind: 'derailed'; readonly reason: DerailReason };
@@ -333,8 +393,9 @@ export interface TrainSetup {
  * setup. O `GameState` inicial herda o valor (`null` quando ausente).
  *
  * `coins` é o overlay de moedas da fase: cada célula deve conter trilho
- * (peça móvel ou ponte fixa), nunca água/estação/vazio. A lista é validada e
- * pode ser omitida nas fases sem moedas (P0/P1).
+ * (peça móvel, inclusive cruzamento, ou ponte fixa), nunca água, montanha,
+ * túnel, estação ou vazio. A lista é validada e pode ser omitida nas fases
+ * sem moedas (P0/P1).
  */
 export interface LevelLayout {
   readonly id: string;
@@ -363,10 +424,12 @@ export type Action =
  * Motivo de toque nulo — toque registrado, mas que não é ação (§3.3).
  *
  * - `empty`: célula vazia;
- * - `fixed`: elemento fixo (hoje a estação); não é ação;
+ * - `fixed`: elemento fixo (estação, rio, ponte, túnel ou montanha); não é ação;
+ * - `crossing`: peça de cruzamento, sem ação por definição (§3.2); o toque
+ *   confirma com flash D3 e não avança o passo;
  * - `outOfBounds`: coordenada fora da grade.
  */
-export type NullTapReason = 'empty' | 'fixed' | 'outOfBounds';
+export type NullTapReason = 'empty' | 'fixed' | 'crossing' | 'outOfBounds';
 
 /** Motivo de toque bloqueado: a célula está ocupada por um trem (§3.2). */
 export type BlockedTapReason = 'train';
@@ -416,6 +479,8 @@ export type ActionOutcome =
  * pisa na primeira célula de trilho definida em `TrainSetup.entry.cell`.
  * `trainMoved` só é emitido para destino dentro da grade; saída pela borda
  * gera `trainDerailed` com `reason: 'offBoard'` e a `direction` de saída.
+ * A travessia de túnel emite `trainMoved` do portal de origem para o parceiro,
+ * com a direção preservada; a célula intermediária não existe como parada.
  *
  * `collision` lista todos os trens e as células envolvidas (uma para colisão
  * no mesmo destino; duas para troca de células no mesmo passo). Cada
@@ -555,6 +620,8 @@ export interface ApplyResult {
  *   conexão para a direção de entrada);
  * - `water`: o trem para/descarrila na água de `cell` (rio sem ponte); é um
  *   marcador distinto de `noExit` no render (E12);
+ * - `mountain`: o trem para/descarrila na montanha de `cell`; marcador
+ *   próprio, distinto de `noExit` e de `water` (E17);
  * - `loop`: revisita de (célula + direção de entrada) — ciclo fechado (D2);
  * - `limit`: o cap de segurança foi atingido antes de uma parada natural.
  */
@@ -571,6 +638,7 @@ export type PredictionStop =
     }
   | { readonly kind: 'noExit'; readonly cell: CellPos }
   | { readonly kind: 'water'; readonly cell: CellPos }
+  | { readonly kind: 'mountain'; readonly cell: CellPos }
   | { readonly kind: 'loop'; readonly cell: CellPos }
   | { readonly kind: 'limit'; readonly cell: CellPos };
 

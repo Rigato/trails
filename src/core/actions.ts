@@ -51,6 +51,8 @@ export function rotatePieceCW(piece: Piece): Piece {
         arm: piece.arm,
         next: 'toggle',
       };
+    case 'crossing':
+      throw new Error('rotatePieceCW: o cruzamento não gira (§3.2)');
   }
 }
 
@@ -91,7 +93,8 @@ function isFinished(state: GameState): boolean {
  * 2. fora da grade → `null/outOfBounds`;
  * 3. célula ocupada por trem → `blocked/train` (§3.2);
  * 4. vazio → `null/empty`; elemento fixo → `null/fixed`;
- * 5. peça livre → `rotated` ou `toggled`, com a peça antes/depois. No Y, o
+ * 5. cruzamento → `null/crossing` (peça sem ação, flash D3, sem passo);
+ * 6. peça livre → `rotated` ou `toggled`, com a peça antes/depois. No Y, o
  *    ABAB por peça decide: `next === 'toggle'` troca o braço; `next ===
  *    'rotate'` gira 90° CW.
  */
@@ -123,6 +126,10 @@ export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
   }
 
   const piece = content.piece;
+
+  if (piece.kind === 'crossing') {
+    return { kind: 'null', reason: 'crossing' };
+  }
 
   if (piece.kind === 'y' && piece.next === 'toggle') {
     return {

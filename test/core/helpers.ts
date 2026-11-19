@@ -56,6 +56,11 @@ export function y(
   return { kind: 'piece', piece: { kind: 'y', rot, arm, next } };
 }
 
+/** Célula com cruzamento; `rot` é cosmético (canais N–S + E–W). */
+export function crossing(rot: Rotation = 0): Cell {
+  return { kind: 'piece', piece: { kind: 'crossing', rot } };
+}
+
 /** Célula de estação. */
 export function station(color: Color = RED, shape: Shape = 'circle'): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
@@ -69,6 +74,16 @@ export function river(): Cell {
 /** Célula de ponte fixa; `axis` é o sentido da travessia. */
 export function bridge(axis: 'east-west' | 'north-south'): Cell {
   return { kind: 'fixed', fixed: { kind: 'bridge', axis } };
+}
+
+/** Célula de portal de túnel apontando para o parceiro. */
+export function tunnel(exit: CellPos): Cell {
+  return { kind: 'fixed', fixed: { kind: 'tunnel', exit } };
+}
+
+/** Célula de montanha (intransponível). */
+export function mountain(): Cell {
+  return { kind: 'fixed', fixed: { kind: 'mountain' } };
 }
 
 /**

@@ -13,6 +13,8 @@
 
 import type {
   Cell,
+  CellPos,
+  CrossingPiece,
   CurvePiece,
   Direction,
   Piece,
@@ -111,6 +113,18 @@ function moveThroughY(piece: YPiece, incoming: Direction): Direction | null {
 }
 
 /**
+ * Cruzamento: dois canais retos independentes. O trem continua na MESMA
+ * direção de deslocamento (entra pelo lado oposto e sai pelo lado de fuga);
+ * `rot` não muda o conjunto de canais.
+ */
+function moveThroughCrossing(
+  _piece: CrossingPiece,
+  incoming: Direction,
+): Direction {
+  return incoming;
+}
+
+/**
  * Saída de uma peça de dois lados para um trem que entra na direção
  * `incoming`.
  *
@@ -149,6 +163,8 @@ export function moveThroughPiece(
       return moveThroughTwoSidedPiece(piece, incoming);
     case 'y':
       return moveThroughY(piece, incoming);
+    case 'crossing':
+      return moveThroughCrossing(piece, incoming);
   }
 }
 
@@ -156,15 +172,21 @@ export function moveThroughPiece(
  * Resultado de resolver uma célula para um trem que entra nela.
  *
  * - `exit`: a célula tem trilho e o trem sai na direção indicada;
+ * - `tunnel`: o trem está num portal e atravessa para `to` (o parceiro),
+ *   preservando a direção de deslocamento; a travessia custa este passo. A
+ *   saída no portal parceiro é tratada no passo seguinte por `justTunneled`;
  * - `station`: a célula é estação; a entrega/descarrilamento depende da cor;
  * - `water`: a célula é rio; o trem para/descarrila na água;
+ * - `mountain`: a célula é montanha; o trem para/descarrila nela;
  * - `noExit`: o trem para/descarrila na célula (vazia, peça sem conexão ou
  *   ponte acessada fora do eixo).
  */
 export type CellExit =
   | { readonly kind: 'exit'; readonly direction: Direction }
+  | { readonly kind: 'tunnel'; readonly to: CellPos }
   | { readonly kind: 'station' }
   | { readonly kind: 'water' }
+  | { readonly kind: 'mountain' }
   | { readonly kind: 'noExit' };
 
 /**
@@ -172,8 +194,10 @@ export type CellExit =
  * `incoming`.
  *
  * Peças usam a tabela de movimento; a estação é um ponto de parada; o rio para
- * na água; a ponte conduz apenas ao longo do seu eixo (quem entra de lado não
- * conecta). A primeira célula da entrada é uma peça comum.
+ * na água; a montanha para na montanha; a ponte conduz apenas ao longo do seu
+ * eixo (quem entra de lado não conecta). O túnel conduz ao parceiro; o estado
+ * `justTunneled` (tratado em `step`/`prediction`) decide a saída no passo
+ * seguinte. A primeira célula da entrada é uma peça comum.
  */
 export function resolveCell(cell: Cell, incoming: Direction): CellExit {
   switch (cell.kind) {
@@ -193,6 +217,8 @@ export function resolveCell(cell: Cell, incoming: Direction): CellExit {
           return { kind: 'station' };
         case 'river':
           return { kind: 'water' };
+        case 'mountain':
+          return { kind: 'mountain' };
         case 'bridge': {
           const alongAxis =
             cell.fixed.axis === 'east-west'
@@ -203,6 +229,8 @@ export function resolveCell(cell: Cell, incoming: Direction): CellExit {
             ? { kind: 'exit', direction: incoming }
             : { kind: 'noExit' };
         }
+        case 'tunnel':
+          return { kind: 'tunnel', to: cell.fixed.exit };
       }
   }
 }
