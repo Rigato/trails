@@ -8,7 +8,9 @@
 ## Estado atual
 Pré-protótipo. MVP de validação de regras com fases descartáveis. Decisão do designer: **validar a diversão da mecânica base antes de investir em loja/consumíveis (sink em 2ª fase).**
 
-**P0 «Contrato» implementado (18–19/11/2026)**: fase tutorial 6×6 jogável de ponta a ponta — 1 ação = 1 passo, previsão de trajetória, botão «passar turno», animação com buffer de input, hint do primeiro giro; 91 testes. Pendente: a sessão de playtest com jogador (Q1/Q2/Q6 do plano de protótipo) e o registro de D1–D6 no GDD via Hefesto.
+**P0 «Contrato» implementado e aprovado em playtest (18–19/11/2026)**: tutorial 6×6 jogável de ponta a ponta — 1 ação = 1 passo, previsão, «passar turno», animação com buffer, hint do primeiro giro.
+
+**P1 «Sincronia» implementado (19/11/2026)**: peça Y (8 estados, ABAB por peça, agulha animada), 2º trem (azul/quadrado), vidas por fase no dado (3 na Sincronia; tutorial sem vidas), handoff tutorial→Sincronia, fase definitiva de 12 passos com janela de sincronia (passos 9→11), colisão por convergência e rota sacrificial — 136 testes. Pendente: a sessão de playtest (Q3/Q4/Q8 do plano de protótipo) e o registro de D1–D11 no GDD via Hefesto.
 
 Versionamento: git com push constante para `https://github.com/Rigato/trails`; GitHub Pages servindo o último estado jogável em **https://rigato.github.io/trails/** (deploy automático a cada push em `main`).
 
