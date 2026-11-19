@@ -1,10 +1,14 @@
 /**
- * HUD mínimo desenhado no canvas: cabeçalho (fase, passo, estado) e os botões.
+ * HUD desenhado no canvas: cabeçalho (fase, passo, estado, vidas) e botões.
  *
  * Em jogo, os dois botões de 44 pt são «Passar turno» e «Recomeçar». Quando a
- * run termina, os dois viram UM botão de largura total: «Jogar de novo» na
- * vitória (D5) e «Recomeçar» no estado sem trem ativo (D1). O caminho para
- * rejogar fica óbvio sem menu — é o sinal de sucesso do P0.
+ * run termina, os dois viram UM botão de largura total: «Próxima fase» quando
+ * a vitória tem sucessora (D10), «Jogar de novo» na última fase e «Recomeçar»
+ * em deadEnd/lost. O caminho para seguir/rejogar fica óbvio sem menu.
+ *
+ * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
+ * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
+ * O pulse da perda é E8; aqui a marca só reflete o snapshot.
  */
 
 import type { GameState } from '../core/types';
@@ -14,6 +18,15 @@ import type { Rect, SceneLayout } from './layout';
 const PALETTE = TUNING.palette;
 const FONT_STACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const HEADER_ALPHA = 0.82;
+const EMPTY_LIFE_ALPHA = 0.5;
+
+/** Contexto de HUD que não vive no snapshot do core. */
+export interface HudContext {
+  /** Total de vidas da fase; `null` = tutorial sem vidas (D1). */
+  readonly livesTotal: number | null;
+  /** A fase atual tem sucessora? Decide «Próxima fase» vs. «Jogar de novo». */
+  readonly hasNextPhase: boolean;
+}
 
 /**
  * Retângulo do botão único de fim de run: a união dos dois botões, incluindo o
@@ -37,18 +50,20 @@ export function drawHud(
   layout: SceneLayout,
   state: GameState,
   levelName: string,
+  context: HudContext,
 ): void {
-  drawHeader(ctx, layout, state, levelName);
+  drawHeader(ctx, layout, state, levelName, context.livesTotal);
 
-  if (state.status === 'won' || state.status === 'deadEnd') {
+  if (isEnded(state)) {
     const winner = state.trains.find((train) => train.status.kind === 'delivered');
-    const accent = state.status === 'won' ? (winner?.color ?? PALETTE.pair) : undefined;
+    const accent =
+      state.status === 'won' ? (winner?.color ?? PALETTE.pairs[0]) : undefined;
 
     drawButton(
       ctx,
       layout,
       fullWidthHudButton(layout),
-      state.status === 'won' ? 'Jogar de novo' : 'Recomeçar',
+      endLabel(state, context.hasNextPhase),
       true,
       true,
       accent,
@@ -60,11 +75,29 @@ export function drawHud(
   drawButton(ctx, layout, layout.passButton, 'Passar turno', true, true);
 }
 
+function isEnded(state: GameState): boolean {
+  return (
+    state.status === 'won' ||
+    state.status === 'deadEnd' ||
+    state.status === 'lost'
+  );
+}
+
+/** Rótulo do botão único de fim de run (D1/D5/D10). */
+function endLabel(state: GameState, hasNextPhase: boolean): string {
+  if (state.status === 'won') {
+    return hasNextPhase ? 'Próxima fase' : 'Jogar de novo';
+  }
+
+  return 'Recomeçar';
+}
+
 function drawHeader(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
   state: GameState,
   levelName: string,
+  livesTotal: number | null,
 ): void {
   const { header, headerFontSize } = layout;
 
@@ -82,9 +115,13 @@ function drawHeader(
     statusLabel(state),
     header.x + header.width,
     header.y + header.height / 2,
-    header.width * 0.38,
+    header.width * 0.42,
   );
   ctx.restore();
+
+  if (livesTotal !== null && livesTotal > 0) {
+    drawLifeMarks(ctx, layout, state.lives ?? 0, livesTotal);
+  }
 }
 
 /** Rótulo curto do estado; o passo é a informação padrão durante o jogo. */
@@ -98,7 +135,55 @@ function statusLabel(state: GameState): string {
       return 'entregue';
     case 'deadEnd':
       return 'sem trem ativo';
+    case 'lost':
+      return 'sem vidas';
   }
+}
+
+/**
+ * Marcas de vida no centro do cabeçalho: cheias = vivas, vazias = perdidas.
+ *
+ * Diamantes pequenos (não os símbolos dos pares) mantêm o HUD neutro em cor e
+ * legível em DPR 1; a quantidade total vem da fase, o saldo do snapshot.
+ */
+function drawLifeMarks(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  current: number,
+  total: number,
+): void {
+  const size = Math.max(6, layout.headerFontSize * 0.55);
+  const gap = size * 0.55;
+  const marksWidth = total * size + (total - 1) * gap;
+  const startX = layout.header.x + layout.header.width / 2 - marksWidth / 2 + size / 2;
+  const cy = layout.header.y + layout.header.height / 2;
+  const alive = Math.max(0, Math.min(total, Math.trunc(current)));
+
+  ctx.save();
+
+  for (let index = 0; index < total; index += 1) {
+    const cx = startX + index * (size + gap);
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - size / 2);
+    ctx.lineTo(cx + size / 2, cy);
+    ctx.lineTo(cx, cy + size / 2);
+    ctx.lineTo(cx - size / 2, cy);
+    ctx.closePath();
+
+    if (index < alive) {
+      ctx.globalAlpha = HEADER_ALPHA;
+      ctx.fillStyle = PALETTE.track;
+      ctx.fill();
+    } else {
+      ctx.globalAlpha = EMPTY_LIFE_ALPHA;
+      ctx.strokeStyle = PALETTE.track;
+      ctx.lineWidth = Math.max(1, size * 0.16);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
 }
 
 function drawButton(

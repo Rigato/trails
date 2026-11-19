@@ -25,6 +25,7 @@ import type {
   Color,
   Direction,
   GameState,
+  LevelLayout,
   Piece,
   Prediction,
   Train,
@@ -34,7 +35,7 @@ import { cellKey } from './core/types';
 import { ActionBuffer } from './core/buffer';
 import { setup } from './core/game';
 import { attachPointerInput } from './input/pointer';
-import { P0_LEVEL } from './level/p0';
+import { PHASES } from './level';
 import {
   CELL_FLASH_MS,
   easeStep,
@@ -111,8 +112,22 @@ const stage = requiredElement<HTMLElement>('#stage');
 const canvas = requiredElement<HTMLCanvasElement>('#game');
 const ctx = requiredContext(canvas);
 
-const game = setup(P0_LEVEL);
+const firstPhase = PHASES[0];
+
+if (firstPhase === undefined) {
+  throw new Error('PHASES vazio: o boot precisa de ao menos uma fase.');
+}
+
+/** Fase atual e posição na sequência D10. */
+let phaseIndex = 0;
+let level: LevelLayout = firstPhase;
+let game = setup(level);
 const buffer = new ActionBuffer(TUNING.maxBufferedActions);
+
+/** A fase atual tem sucessora? Decide «Próxima fase» vs. «Jogar de novo». */
+function hasNextPhase(): boolean {
+  return phaseIndex < PHASES.length - 1;
+}
 
 /** Ação drenada ainda não iniciada, esperando o `bufferedStepGapMs`. */
 let pendingStepAt: number | null = null;
@@ -129,9 +144,13 @@ let flashes: CellFlash[] = [];
 let pulses: DeliveryPulse[] = [];
 let exits: DerailExit[] = [];
 
-/** O jogo terminou (vitória ou «sem trem ativo» de D1)? */
+/** O jogo terminou (vitória, «sem trem ativo» de D1 ou derrota D7)? */
 function isFinished(): boolean {
-  return game.state.status === 'won' || game.state.status === 'deadEnd';
+  return (
+    game.state.status === 'won' ||
+    game.state.status === 'deadEnd' ||
+    game.state.status === 'lost'
+  );
 }
 
 /** Previsões do estado atual; recalculadas a cada passo e a cada reset. */
@@ -253,8 +272,13 @@ function buildStepAnimation(
       }
 
       case 'collision':
+      case 'lifeLost':
       case 'victory':
       case 'deadEnd':
+        break;
+
+      case 'pieceToggled':
+        // E7 desenha o estado instantâneo; a animação da agulha é E8.
         break;
     }
   }
@@ -444,6 +468,45 @@ function onReset(): void {
   draw(performance.now());
 }
 
+/**
+ * Carrega uma fase da sequência (D10) do zero, como o boot faria. Vidas vêm do
+ * layout pelo `setup`; nada da run anterior sobrevive (buffer, animação, fx).
+ */
+function loadPhase(index: number): void {
+  const next = PHASES[index];
+
+  if (next === undefined) {
+    return;
+  }
+
+  buffer.clear();
+  animation = null;
+  pendingStepAt = null;
+  flashes = [];
+  pulses = [];
+  exits = [];
+  phaseIndex = index;
+  level = next;
+  game = setup(level);
+  predictions = collectPredictions();
+  firstHint = firstHintTarget(game.state, predictions);
+  layout = computeLayout(layout.width, layout.height, game.state.board);
+  draw(performance.now());
+}
+
+/**
+ * Ação do botão único de fim de run: vitória com sucessora avança; vitória na
+ * última fase e deadEnd/lost recomeçam a fase atual (D10).
+ */
+function onFinishedAction(): void {
+  if (game.state.status === 'won' && hasNextPhase()) {
+    loadPhase(phaseIndex + 1);
+    return;
+  }
+
+  onReset();
+}
+
 /** Interpolação angular pelo caminho mais curto (radianos). */
 function lerpAngle(from: number, to: number, t: number): number {
   let delta = (to - from) % (Math.PI * 2);
@@ -575,7 +638,9 @@ function draw(now: number): void {
   drawScene(ctx, layout, {
     state: game.state,
     predictions,
-    levelName: P0_LEVEL.name,
+    levelName: level.name,
+    livesTotal: level.lives ?? null,
+    hasNextPhase: hasNextPhase(),
     now,
     trains: buildTrainViews(now),
     pieceAngles: buildPieceAngles(now),
@@ -638,6 +703,7 @@ attachPointerInput(canvas, {
   getLayout: () => layout,
   onAction,
   onReset,
+  onFinishedAction,
   isFinished,
 });
 
@@ -658,6 +724,11 @@ declare global {
       readonly state: GameState;
       readonly predictions: readonly Prediction[];
       readonly layout: SceneLayout;
+      readonly phaseIndex: number;
+      readonly phaseCount: number;
+      readonly levelId: string;
+      readonly levelName: string;
+      readonly hasNextPhase: boolean;
       readonly bufferSize: number;
       readonly animating: boolean;
       readonly pendingStepAt: number | null;
@@ -679,6 +750,21 @@ window.__trailsDebug = {
   },
   get layout() {
     return layout;
+  },
+  get phaseIndex() {
+    return phaseIndex;
+  },
+  get phaseCount() {
+    return PHASES.length;
+  },
+  get levelId() {
+    return level.id;
+  },
+  get levelName() {
+    return level.name;
+  },
+  get hasNextPhase() {
+    return hasNextPhase();
   },
   get bufferSize() {
     return buffer.size;

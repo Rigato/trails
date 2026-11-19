@@ -2,25 +2,72 @@
  * Peças móveis desenhadas por código — sem nenhum asset.
  *
  * A orientação canônica é a do contrato (`core/types.ts`): reta rot 0 = N–S;
- * curva rot 0 = N–E; `rot` é quarto de volta no sentido horário. O desenho
- * aplica a mesma rotação de contexto, então render e regra não podem divergir.
+ * curva rot 0 = N–E; Y rot 0 = talo N, braços L/O e lado S fechado. `rot` gira
+ * o conjunto 90° CW. O desenho aplica a mesma rotação de contexto, então
+ * render e regra não podem divergir.
  *
  * `angleRad` opcional é o gancho do E3: durante o giro animado a peça é
  * desenhada num ângulo contínuo (fora dos múltiplos de 90°) sem que a regra
  * saiba da animação.
+ *
+ * Y: três stubs (talo + duas pontas) e uma agulha clara alinhada ao canal
+ * ativo. O lado fechado não tem trilho. D9: `next` não é desenhado — a agulha
+ * mostra só o estado atual, nunca a próxima ação ABAB.
  */
 
-import type { Piece } from '../core/types';
+import type { Direction, Piece, YPiece } from '../core/types';
+import { turnClockwise } from '../core/types';
 import { TUNING } from '../config/tuning';
 
 /** Espessura mínima do trilho em px CSS (legibilidade em DPR 1). */
 const MIN_TRACK_WIDTH = 2;
+/** Contorno mínimo da agulha em px CSS. */
+const MIN_NEEDLE_OUTLINE = 1.5;
+
+/** Lados do Y na orientação atual (convenção canônica do contrato). */
+export interface YSides {
+  readonly stub: Direction;
+  readonly arm0: Direction;
+  readonly arm1: Direction;
+  readonly closed: Direction;
+}
+
+/** Gira uma direção `rot` quartos CW. */
+function rotateDirection(direction: Direction, rot: number): Direction {
+  let result = direction;
+
+  for (let turn = 0; turn < rot; turn += 1) {
+    result = turnClockwise(result);
+  }
+
+  return result;
+}
+
+/**
+ * Lados do Y na convenção do core: rot 0 = talo N, braço 0 L, braço 1 O,
+ * fechado S. Cada quarto de volta gira os quatro lados juntos.
+ */
+export function ySides(piece: YPiece): YSides {
+  return {
+    stub: rotateDirection('north', piece.rot),
+    arm0: rotateDirection('east', piece.rot),
+    arm1: rotateDirection('west', piece.rot),
+    closed: rotateDirection('south', piece.rot),
+  };
+}
+
+/** Lado da ponta ativa (o braço que o talo alcança). */
+export function yActiveSide(piece: YPiece): Direction {
+  const sides = ySides(piece);
+
+  return piece.arm === 0 ? sides.arm0 : sides.arm1;
+}
 
 /**
  * Constrói o traçado canônico de uma peça no contexto atual, sem espessura nem
  * cor. O chamador decide o stroke. A previsão pontilhada reconstrói a mesma
- * geometria canônica (reta entre bordas opostas; arco no canto) em um caminho
- * contínuo, então a rota nunca «descola» do trilho.
+ * geometria canônica (reta entre bordas opostas; arco no canto; Y com três
+ * stubs) em um caminho contínuo, então a rota nunca «descola» do trilho.
  */
 export function tracePiecePath(
   ctx: CanvasRenderingContext2D,
@@ -43,10 +90,19 @@ export function tracePiecePath(
     // Canônico: norte–sul, atravessando a célula de ponta a ponta.
     ctx.moveTo(half, 0);
     ctx.lineTo(half, cell);
-  } else {
+  } else if (piece.kind === 'curve') {
     // Canônico: norte–leste. Centro no canto NE; arco pela borda interna do
     // canto, tangente aos lados norte e leste.
     ctx.arc(cell, 0, half, Math.PI / 2, Math.PI, false);
+  } else {
+    // Y canônico: talo N + braços L/O até o centro; o lado S fechado fica sem
+    // traço. O encontro no centro é coberto pelo pino desenhado em drawPiece.
+    ctx.moveTo(half, 0);
+    ctx.lineTo(half, half);
+    ctx.moveTo(cell, half);
+    ctx.lineTo(half, half);
+    ctx.moveTo(0, half);
+    ctx.lineTo(half, half);
   }
 
   ctx.restore();
@@ -57,6 +113,7 @@ export function tracePiecePath(
  *
  * Reta: traço dos dois lados opostos (N–S canônico). Curva: arco de um quarto
  * de volta que encosta no canto entre os dois lados conectados (N–E canônico).
+ * Y: três stubs + agulha clara no braço ativo; o lado fechado fica vazio.
  * `angleRad` permite o giro animado do E3.
  */
 export function drawPiece(
@@ -69,13 +126,67 @@ export function drawPiece(
   angleRad?: number,
 ): void {
   const lineWidth = Math.max(MIN_TRACK_WIDTH, cell * TUNING.trackWidthRatio);
+  const angle = angleRad ?? (piece.rot * Math.PI) / 2;
 
   ctx.save();
-  tracePiecePath(ctx, piece, x, y, cell, angleRad);
+  tracePiecePath(ctx, piece, x, y, cell, angle);
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
   ctx.stroke();
+  ctx.restore();
+
+  if (piece.kind === 'y') {
+    drawYNeedle(ctx, piece, x, y, cell, color, lineWidth, angle);
+  }
+}
+
+/**
+ * Agulha do Y alinhada ao braço ativo.
+ *
+ * Uma lâmina clara (cor de fundo) com contorno do trilho: a cor do trilho
+ * sumiria sobre os próprios stubs. Os três stubs continuam aceitando trem — a
+ * agulha só comunica qual ponta o talo alcança agora. O pino escuro no centro
+ * fecha o encontro dos stubs e dá a leitura de eixo do desvio.
+ */
+function drawYNeedle(
+  ctx: CanvasRenderingContext2D,
+  piece: YPiece,
+  x: number,
+  y: number,
+  cell: number,
+  color: string,
+  trackWidth: number,
+  angle: number,
+): void {
+  const cx = x + cell / 2;
+  const cy = y + cell / 2;
+  const length = cell * TUNING.yNeedleRatio;
+  const base = Math.max(MIN_TRACK_WIDTH, trackWidth * 0.52);
+  const direction = piece.arm === 0 ? 1 : -1;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  // Lâmina em forma de cunha: base no pino, ponta no canal ativo.
+  ctx.beginPath();
+  ctx.moveTo(0, -base);
+  ctx.lineTo(direction * length, 0);
+  ctx.lineTo(0, base);
+  ctx.closePath();
+  ctx.fillStyle = TUNING.palette.background;
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(MIN_NEEDLE_OUTLINE, cell * 0.02);
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Pino central: cobre a junção dos três stubs e a base da agulha.
+  ctx.beginPath();
+  ctx.arc(0, 0, trackWidth * 0.46, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
   ctx.restore();
 }

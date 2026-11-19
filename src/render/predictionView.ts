@@ -17,9 +17,10 @@ import type {
   Board,
   CellPos,
   Color,
+  CurvePiece,
   Direction,
-  Piece,
   Prediction,
+  StraightPiece,
 } from '../core/types';
 import { cellAt, directionOffset, opposite, turnClockwise } from '../core/types';
 import { TUNING } from '../config/tuning';
@@ -36,6 +37,9 @@ const STOP_ALPHA = 0.82;
 const DOT_LENGTH = 0.01;
 /** Espaçamento entre pontos como fração da célula. */
 const DOT_GAP_RATIO = 0.16;
+/** Padrão alternativo para o 2º par: traços curtos em vez de pontos. */
+const DASH_LENGTH_RATIO = 0.07;
+const DASH_GAP_RATIO = 0.13;
 
 interface Point {
   readonly x: number;
@@ -69,7 +73,7 @@ function directionBetween(from: CellPos, to: CellPos): Direction | undefined {
  * Reta rot 0: N–S; rot 1: L–O. Curva rot 0: N–L; cada quarto CW gira os dois
  * lados juntos.
  */
-function pieceSides(piece: Piece): readonly [Direction, Direction] {
+function pieceSides(piece: StraightPiece | CurvePiece): readonly [Direction, Direction] {
   if (piece.kind === 'straight') {
     return piece.rot % 2 === 0 ? ['north', 'south'] : ['east', 'west'];
   }
@@ -100,10 +104,8 @@ function edgePoint(center: Point, side: Direction, half: number): Point {
  * `predictionDashMs`**. O offset é reduzido ao ciclo do padrão (que é
  * periódico), então o movimento é contínuo e não há salto no fim do período.
  */
-function dashOffset(cellSize: number, now: number): number {
+function dashOffset(cellSize: number, now: number, cycle: number): number {
   const period = TUNING.predictionDashMs;
-  const gap = cellSize * DOT_GAP_RATIO;
-  const cycle = DOT_LENGTH + gap;
 
   if (!(period > 0) || !Number.isFinite(period) || !(cycle > 0)) {
     return 0;
@@ -176,6 +178,27 @@ function tracePredictionRoute(
     }
 
     if (content?.kind === 'piece') {
+      if (content.piece.kind === 'y') {
+        // Y: a rota selecionada entra/sai por lados que o core já resolveu. O
+        // traço passa pelo centro (o pino) e não tenta adivinhar o braço
+        // ativo — a agulha é desenho da peça, não da previsão.
+        const exit =
+          exitSide ??
+          (prediction.stop.kind === 'border' ? prediction.stop.direction : undefined);
+
+        if (entrySide !== undefined) {
+          place(edgePoint(center, entrySide, half));
+          lineTo(center);
+        } else {
+          place(center);
+        }
+
+        if (exit !== undefined) {
+          lineTo(edgePoint(center, exit, half));
+        }
+        continue;
+      }
+
       const sides = pieceSides(content.piece);
       const entry =
         entrySide ??
@@ -254,7 +277,9 @@ function tracePredictionRoute(
  * Desenha a previsão de um trem.
  *
  * O trajeto já vem do core; o render só escolhe a geometria de cada célula e
- * o marcador do ponto de parada. `now` move a marcha dos pontinhos.
+ * o marcador do ponto de parada. `now` move a marcha dos pontinhos. `variant`
+ * alterna o padrão (0 = pontos redondos, 1 = traços curtos) para dois trens
+ * simultâneos não serem confundidos só pela cor.
  */
 export function drawPrediction(
   ctx: CanvasRenderingContext2D,
@@ -263,6 +288,7 @@ export function drawPrediction(
   prediction: Prediction,
   color: Color,
   now: number,
+  variant = 0,
 ): void {
   const path = prediction.path;
   const lastIndex = path.length - 1;
@@ -273,6 +299,9 @@ export function drawPrediction(
   }
 
   const cellSize = layout.cell;
+  const dashLength =
+    variant % 2 === 0 ? DOT_LENGTH : Math.max(1, cellSize * DASH_LENGTH_RATIO);
+  const dashGap = cellSize * (variant % 2 === 0 ? DOT_GAP_RATIO : DASH_GAP_RATIO);
 
   ctx.save();
   ctx.strokeStyle = color;
@@ -283,8 +312,8 @@ export function drawPrediction(
   // Marcha contínua: um único caminho + offset de dash dependente do relógio.
   ctx.globalAlpha = PALETTE.predictionAlpha;
   ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.07);
-  ctx.setLineDash([DOT_LENGTH, cellSize * DOT_GAP_RATIO]);
-  ctx.lineDashOffset = dashOffset(cellSize, now);
+  ctx.setLineDash([dashLength, dashGap]);
+  ctx.lineDashOffset = dashOffset(cellSize, now, dashLength + dashGap);
 
   ctx.beginPath();
   tracePredictionRoute(ctx, layout, board, prediction);

@@ -49,6 +49,10 @@ export interface Scene {
   readonly state: GameState;
   readonly predictions: readonly Prediction[];
   readonly levelName: string;
+  /** Total de vidas da fase; `null` no tutorial sem vidas (D1). */
+  readonly livesTotal: number | null;
+  /** A fase atual tem sucessora? D10 decide o rótulo do botão final. */
+  readonly hasNextPhase: boolean;
   /** Relógio do quadro, em ms — marcha da previsão e lifecycles dos feedbacks. */
   readonly now: number;
   readonly trains: readonly TrainView[];
@@ -94,7 +98,19 @@ export function drawScene(
     const train = trainsById.get(prediction.trainId);
 
     if (train !== undefined) {
-      drawPrediction(ctx, layout, state.board, prediction, train.color, now);
+      const trainIndex = state.trains.findIndex(
+        (candidate) => candidate.id === prediction.trainId,
+      );
+
+      drawPrediction(
+        ctx,
+        layout,
+        state.board,
+        prediction,
+        train.color,
+        now,
+        Math.max(0, trainIndex) % 2,
+      );
     }
   }
 
@@ -119,6 +135,9 @@ export function drawScene(
     drawDerailExit(ctx, layout, exit, now);
   }
 
-  drawHud(ctx, layout, state, scene.levelName);
+  drawHud(ctx, layout, state, scene.levelName, {
+    livesTotal: scene.livesTotal,
+    hasNextPhase: scene.hasNextPhase,
+  });
   ctx.restore();
 }

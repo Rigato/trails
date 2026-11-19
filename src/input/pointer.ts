@@ -25,8 +25,15 @@ export interface PointerInputHandlers {
   /** «Recomeçar»: restaura o estado inicial do layout. */
   readonly onReset: () => void;
   /**
+   * Ação do botão único de fim de run (D1/D5/D10). `main.ts` decide entre
+   * carregar a próxima fase (vitória com sucessora), rejogar ou recomeçar a
+   * fase atual. Sem callback, cai no reset.
+   */
+  readonly onFinishedAction?: () => void;
+  /**
    * A run terminou? Quando sim, o HUD mostra um único botão de largura total
-   * (D1/D5) e qualquer toque dentro dele reinicia — inclusive no vão central.
+   * (D1/D5) e qualquer toque dentro dele executa a ação de fim — inclusive no
+   * vão central.
    */
   readonly isFinished?: () => boolean;
 }
@@ -69,7 +76,7 @@ export function attachPointerInput(
     const y = (event.clientY - rect.top) * (layout.height / rect.height);
 
     if (handlers.isFinished?.() && containsPoint(fullWidthHudButton(layout), x, y)) {
-      handlers.onReset();
+      (handlers.onFinishedAction ?? handlers.onReset)();
       return;
     }
 
