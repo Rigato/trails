@@ -111,6 +111,7 @@ describe('saída do trem descarrilado (D1)', () => {
     },
     cell: { col: 2, row: 5 },
     direction: 'south',
+    reason: 'noExit',
     startedAt: 3000,
   };
 

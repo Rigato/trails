@@ -17,13 +17,15 @@ import type {
 } from '../core/types';
 import { TUNING } from '../config/tuning';
 import { drawBoard } from './board';
-import { drawCoinRing } from './coin';
+import { drawCoinPulse, drawCoinRing } from './coin';
 import {
+  coinPulseProgress,
   drawCellFlash,
   drawDeliveryPulse,
   drawDerailExit,
   drawFirstHint,
   type CellFlash,
+  type CoinPulse,
   type DeliveryPulse,
   type DerailExit,
   type LifeLostPulse,
@@ -76,6 +78,10 @@ export interface Scene {
   readonly coins: readonly CellPos[];
   /** Total de moedas da fase; `0` = fase sem moedas. */
   readonly coinsTotal: number;
+  /** Coletas recentes: anel dourado na célula (E13). */
+  readonly coinPulses: readonly CoinPulse[];
+  /** Início do tick do contador de moedas (E13); `null` = sem tick. */
+  readonly coinTickAt: number | null;
 }
 
 /** Desenha um quadro inteiro. */
@@ -158,6 +164,20 @@ export function drawScene(
     drawCoinRing(ctx, center.x, center.y, layout.cell * TUNING.coinRatio);
   }
 
+  // Coleta em ~0 tempo: a moeda já saiu; o anel dourado marca o instante no
+  // início do passo. Fica sob os trens (o centro da célula é deles).
+  for (const pulse of scene.coinPulses) {
+    const center = cellCenter(layout, pulse.cell);
+
+    drawCoinPulse(
+      ctx,
+      center.x,
+      center.y,
+      layout.cell,
+      coinPulseProgress(pulse, now),
+    );
+  }
+
   for (const pulse of scene.pulses) {
     drawDeliveryPulse(ctx, layout, pulse, now);
   }
@@ -185,6 +205,7 @@ export function drawScene(
     now,
     lifePulses: scene.lifePulses,
     coinsTotal: scene.coinsTotal,
+    coinTickAt: scene.coinTickAt,
   });
   ctx.restore();
 }

@@ -14,8 +14,9 @@
 
 import type { GameState } from '../core/types';
 import { TUNING } from '../config/tuning';
-import { drawCoinGlyph } from './coin';
+import { drawCoinGlyph, drawCoinTick } from './coin';
 import {
+  coinTickProgress,
   lifePulseProgress,
   lifePulseRing,
   lifePulseScale,
@@ -40,6 +41,8 @@ export interface HudContext {
   readonly lifePulses: readonly LifeLostPulse[];
   /** Total de moedas da fase; `0` = fase sem moedas (P0/P1). */
   readonly coinsTotal: number;
+  /** Início do último tick do contador de moedas (E13); `null` = sem tick. */
+  readonly coinTickAt: number | null;
 }
 
 /**
@@ -149,7 +152,14 @@ function drawHeader(
   }
 
   if (context.coinsTotal > 0) {
-    drawCoinCounter(ctx, layout, state.coinsCollected.length, statusWidth);
+    drawCoinCounter(
+      ctx,
+      layout,
+      state.coinsCollected.length,
+      statusWidth,
+      context.now,
+      context.coinTickAt,
+    );
   }
 }
 
@@ -157,12 +167,17 @@ function drawHeader(
  * Contador burro de moedas: glifo de ouro + `coinsCollected.length`, à direita
  * do cabeçalho antes do «passo N». Sem total, fórmula ou denominador — só o
  * número coletado. Fase sem moedas não chega aqui.
+ *
+ * E13: quando o número sobe, o glifo pulsa uma vez (cresce + anel dourado,
+ * `coinPulseMs`) — o texto do número fica estável; o movimento é do glifo.
  */
 function drawCoinCounter(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
   count: number,
   statusWidth: number,
+  now: number,
+  coinTickAt: number | null,
 ): void {
   const { header, headerFontSize } = layout;
   const countText = String(count);
@@ -177,6 +192,7 @@ function drawCoinCounter(
   const rightEdge = header.x + header.width - statusWidth - statusGap;
   const groupLeft = rightEdge - groupWidth;
   const cy = header.y + header.height / 2;
+  const glyphX = groupLeft + coinRadius;
 
   ctx.globalAlpha = HEADER_ALPHA;
   ctx.fillStyle = PALETTE.track;
@@ -184,7 +200,14 @@ function drawCoinCounter(
   ctx.textBaseline = 'middle';
   ctx.fillText(countText, rightEdge, cy);
 
-  drawCoinGlyph(ctx, groupLeft + coinRadius, cy, coinRadius);
+  const tick = coinTickAt === null ? 1 : coinTickProgress(coinTickAt, now);
+
+  if (tick < 1) {
+    drawCoinTick(ctx, glyphX, cy, coinRadius, tick);
+  } else {
+    drawCoinGlyph(ctx, glyphX, cy, coinRadius);
+  }
+
   ctx.restore();
 }
 

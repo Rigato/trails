@@ -50,6 +50,7 @@ import {
   stationPulseScale,
   yNeedleSweepAngle,
   type CellFlash,
+  type CoinPulse,
   type DeliveryPulse,
   type DerailExit,
   type DerailVisual,
@@ -98,6 +99,8 @@ interface StepAnimation {
   readonly derails: readonly DerailVisual[];
   /** Índices das marcas de vida esvaziadas neste passo (E8). */
   readonly lifeLostMarks: readonly number[];
+  /** Células de moeda coletadas neste passo (E13). */
+  readonly coins: readonly CellPos[];
 }
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -156,6 +159,8 @@ let flashes: CellFlash[] = [];
 let pulses: DeliveryPulse[] = [];
 let exits: DerailExit[] = [];
 let lifePulses: LifeLostPulse[] = [];
+let coinPulses: CoinPulse[] = [];
+let coinTickAt: number | null = null;
 
 /** O jogo terminou (vitória, «sem trem ativo» de D1 ou derrota D7)? */
 function isFinished(): boolean {
@@ -237,6 +242,7 @@ function buildStepAnimation(
   let rotation: StepAnimation['rotation'] = null;
   let toggle: StepAnimation['toggle'] = null;
   const deliveries: { station: CellPos; color: Color }[] = [];
+  const coins: CellPos[] = [];
 
   for (const event of result.events) {
     switch (event.kind) {
@@ -284,6 +290,10 @@ function buildStepAnimation(
         break;
       }
 
+      case 'coinCollected':
+        coins.push(event.cell);
+        break;
+
       case 'trainDerailed':
         // Os fantasmas saem de `derailVisuals` (um por evento, inclusive os
         // DOIS participantes de uma colisão).
@@ -328,6 +338,7 @@ function buildStepAnimation(
     deliveries,
     derails,
     lifeLostMarks,
+    coins,
   };
 }
 
@@ -391,6 +402,16 @@ function drainAvailable(now: number): void {
       predictions = collectPredictions();
       firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
+
+      // Coleta em ~0 tempo: a moeda já saiu do snapshot; o anel e o tick do
+      // contador nascem no INÍCIO do passo, não em `endsAt`.
+      for (const cell of animation.coins) {
+        coinPulses.push({ cell, startedAt: now });
+      }
+      if (animation.coins.length > 0) {
+        coinTickAt = now;
+      }
+
       return;
     }
 
@@ -427,6 +448,7 @@ function finishStep(now: number): void {
       train: derail.train,
       cell: derail.at,
       direction: derail.direction,
+      reason: derail.reason,
       startedAt: step.endsAt,
     });
   }
@@ -487,6 +509,8 @@ function onReset(): void {
   pulses = [];
   exits = [];
   lifePulses = [];
+  coinPulses = [];
+  coinTickAt = null;
   game.reset();
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
@@ -511,6 +535,8 @@ function loadPhase(index: number): void {
   pulses = [];
   exits = [];
   lifePulses = [];
+  coinPulses = [];
+  coinTickAt = null;
   phaseIndex = index;
   level = next;
   game = setup(level);
@@ -715,6 +741,9 @@ function pruneFeedback(now: number): void {
   lifePulses = lifePulses.filter(
     (pulse) => now - pulse.startedAt < TUNING.lifeLostPulseMs,
   );
+  coinPulses = coinPulses.filter(
+    (pulse) => now - pulse.startedAt < TUNING.coinPulseMs,
+  );
 }
 
 /** Desenha um quadro inteiro a partir do relógio. */
@@ -745,6 +774,8 @@ function draw(now: number): void {
     lifePulses,
     coins,
     coinsTotal: level.coins?.length ?? 0,
+    coinPulses,
+    coinTickAt,
   });
 }
 
@@ -832,6 +863,10 @@ declare global {
       readonly firstHint: CellPos | null;
       /** Marcas de vida que ainda pulsam (E8), com índice e início. */
       readonly lifePulses: readonly LifeLostPulse[];
+      /** Coletas de moeda recentes (E13), com célula e início. */
+      readonly coinPulses: readonly CoinPulse[];
+      /** Início do tick do contador de moedas (E13); `null` = sem tick. */
+      readonly coinTickAt: number | null;
       /** Início/fim do passo visual em andamento (QA de duração). */
       readonly stepStartedAt: number | null;
       readonly stepEndsAt: number | null;
@@ -878,6 +913,12 @@ window.__trailsDebug = {
   },
   get lifePulses() {
     return lifePulses;
+  },
+  get coinPulses() {
+    return coinPulses;
+  },
+  get coinTickAt() {
+    return coinTickAt;
   },
   get stepStartedAt() {
     return animation?.startedAt ?? null;

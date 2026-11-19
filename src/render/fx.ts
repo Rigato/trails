@@ -17,6 +17,7 @@
 import type {
   CellPos,
   Color,
+  DerailReason,
   Direction,
   GameEvent,
   GameState,
@@ -142,11 +143,25 @@ export interface DeliveryPulse {
   readonly startedAt: number;
 }
 
+/**
+ * Coleta de moeda (E13).
+ *
+ * A moeda sai do snapshot no MESMO instante da ação (o core aplica a coleta no
+ * passo), então o pulse é ancorado no início do passo — não no fim, como os
+ * efeitos de chegada/saída. É o «~0 tempo» da coleta. O mesmo `coinPulseMs`
+ * anima o tick do contador no HUD.
+ */
+export interface CoinPulse {
+  readonly cell: CellPos;
+  readonly startedAt: number;
+}
+
 /** Fantasma do trem que sai do tabuleiro após descarrilar (D1). */
 export interface DerailExit {
   readonly train: Train;
   readonly cell: CellPos;
   readonly direction: Direction;
+  readonly reason: DerailReason;
   readonly startedAt: number;
 }
 
@@ -155,11 +170,14 @@ export interface DerailVisual {
   readonly train: Train;
   readonly at: CellPos;
   readonly direction: Direction;
+  readonly reason: DerailReason;
 }
 
 /**
  * Um fantasma por `trainDerailed` — inclusive DOIS na colisão (o core emite um
  * evento por participante). A ordem é a dos eventos; a cena desenha todos.
+ * `reason` separa a saída lateral (borda/sem-saída/estação errada/colisão) do
+ * afundamento na água (E13).
  */
 export function derailVisuals(
   events: readonly GameEvent[],
@@ -176,7 +194,12 @@ export function derailVisuals(
     const train = byId.get(event.trainId);
 
     if (train !== undefined) {
-      visuals.push({ train, at: event.at, direction: event.direction });
+      visuals.push({
+        train,
+        at: event.at,
+        direction: event.direction,
+        reason: event.reason,
+      });
     }
   }
 
@@ -348,6 +371,18 @@ export function lifePulseProgress(pulse: LifeLostPulse, now: number): number {
   return clamp01((now - pulse.startedAt) / duration);
 }
 
+/** Progresso do pulse de coleta de moeda em [0, 1]. */
+export function coinPulseProgress(pulse: CoinPulse, now: number): number {
+  const duration = Math.max(1, TUNING.coinPulseMs);
+  return clamp01((now - pulse.startedAt) / duration);
+}
+
+/** Progresso do tick do contador de moedas (mesma janela do pulse). */
+export function coinTickProgress(startedAt: number, now: number): number {
+  const duration = Math.max(1, TUNING.coinPulseMs);
+  return clamp01((now - startedAt) / duration);
+}
+
 /**
  * Escala da marca de vida durante o pulse de perda.
  *
@@ -473,7 +508,14 @@ export function drawDeliveryPulse(
   ctx.restore();
 }
 
-/** Trem descarrilado saindo: desliza na direção da falha e encolhe até sumir. */
+/**
+ * Trem descarrilado saindo (D1/E13).
+ *
+ * - `water`: o trem para NA água e **afunda no lugar** — centro fixo (sem
+ *   deslize lateral, que daria a impressão de travessia), encolhe, um véu
+ *   escuro de água fecha por cima e dois anéis claros ondulam na célula.
+ * - outros motivos: desliza na direção da falha, encolhe e some.
+ */
 export function drawDerailExit(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
@@ -483,6 +525,11 @@ export function drawDerailExit(
   const t = derailProgress(exit, now);
 
   if (t >= 1 || layout.cell <= 0) {
+    return;
+  }
+
+  if (exit.reason === 'water') {
+    drawWaterSink(ctx, layout, exit, t);
     return;
   }
 
@@ -502,4 +549,78 @@ export function drawDerailExit(
     scale,
     alpha,
   );
+}
+
+/**
+ * Afundamento na água: o trem encolhe e escurece sob a superfície, sem sair do
+ * centro da célula. As ondulações são dois anéis claros e baratos; o véu é a
+ * própria água fechando (cor do trilho, opacidade em seno, some no fim).
+ */
+function drawWaterSink(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  exit: DerailExit,
+  t: number,
+): void {
+  const cell = layout.cell;
+  const center = cellCenter(layout, exit.cell);
+  const sink = easeOutQuad(t);
+  const scale = 1 - 0.62 * sink;
+  const alpha = 1 - t * t;
+
+  // Ondulação discreta: anéis claros sobre a água, expandem e somem.
+  ctx.save();
+  ctx.strokeStyle = TUNING.palette.background;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = Math.max(1, cell * 0.012);
+  ctx.globalAlpha = 0.34 * (1 - t);
+  ctx.beginPath();
+  ctx.arc(
+    center.x,
+    center.y,
+    cell * (0.18 + 0.16 * easeOutCubic(t)),
+    0,
+    Math.PI * 2,
+  );
+  ctx.stroke();
+
+  if (t > 0.14) {
+    const second = (t - 0.14) / 0.86;
+    ctx.globalAlpha = 0.22 * (1 - t);
+    ctx.beginPath();
+    ctx.arc(
+      center.x,
+      center.y,
+      cell * (0.26 + 0.2 * easeOutCubic(second)),
+      0,
+      Math.PI * 2,
+    );
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Centro fixo: o trem para na água; encolhe e some.
+  drawTrainAt(
+    ctx,
+    cell,
+    exit.train,
+    center.x,
+    center.y,
+    directionAngle(exit.direction),
+    scale,
+    alpha,
+  );
+
+  // Véu escuro de água fechando por cima do trem (o «escurece» do afundar).
+  const veil = 0.34 * Math.sin(Math.PI * clamp01(t));
+
+  if (veil > 0) {
+    ctx.save();
+    ctx.globalAlpha = veil;
+    ctx.fillStyle = TUNING.palette.track;
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, cell * (0.16 + 0.09 * sink), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
