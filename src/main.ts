@@ -45,9 +45,13 @@ import {
   derailVisuals,
   easeStep,
   firstHintTarget,
+  isInsideTunnel,
   lifeLostMarkIndices,
   rotationProgress,
   stationPulseScale,
+  tunnelEmergeMix,
+  tunnelEnterAlpha,
+  tunnelMotion,
   yNeedleSweepAngle,
   type CellFlash,
   type CoinPulse,
@@ -55,6 +59,7 @@ import {
   type DerailExit,
   type DerailVisual,
   type LifeLostPulse,
+  type TunnelMotion,
 } from './render/fx';
 import { cellCenter, computeLayout, type SceneLayout } from './render/layout';
 import { drawScene, type TrainView } from './render/scene';
@@ -66,6 +71,12 @@ const SHELL_ASPECT = 9 / 16;
 /** Teto de DPR: acima disso o custo de fill rate não paga a nitidez. */
 const MAX_DPR = 2;
 
+/**
+ * Início da emergência do túnel: quanto o trem nasce atrás do centro do portal
+ * parceiro, contra a direção de viagem, em fração da célula (E18).
+ */
+const TUNNEL_EMERGE_BACK_RATIO = 0.38;
+
 /** Trem em animação de um passo: posição/ângulo de origem e destino. */
 interface MoveAnimation {
   readonly train: Train;
@@ -74,6 +85,8 @@ interface MoveAnimation {
   readonly to: CellPos;
   readonly fromDirection: Direction;
   readonly toDirection: Direction;
+  /** Entrada/saída do portal (E18); `null` em movimento comum. */
+  readonly tunnel: TunnelMotion;
 }
 
 /** Um passo em andamento: o snapshot antigo virou dados de interpolação. */
@@ -277,6 +290,7 @@ function buildStepAnimation(
             event.from === null
               ? heading
               : (directionBetween(event.from, event.to) ?? heading),
+          tunnel: tunnelMotion(previous.board, event.from, event.to),
         });
         break;
       }
@@ -325,6 +339,7 @@ function buildStepAnimation(
         to: status.cell,
         fromDirection: heading,
         toDirection: heading,
+        tunnel: null,
       });
     }
   }
@@ -597,10 +612,8 @@ function buildTrainViews(now: number): TrainView[] {
 
   if (animation !== null) {
     const duration = Math.max(1, animation.endsAt - animation.startedAt);
-    const progress = easeStep(
-      TUNING.stepEasing,
-      (now - animation.startedAt) / duration,
-    );
+    const raw = (now - animation.startedAt) / duration;
+    const progress = easeStep(TUNING.stepEasing, raw);
 
     for (const move of animation.moves) {
       const from =
@@ -608,6 +621,43 @@ function buildTrainViews(now: number): TrainView[] {
           ? waitingCenter(move.train.status)
           : cellCenter(layout, move.from ?? move.to);
       const to = cellCenter(layout, move.to);
+
+      if (move.tunnel === 'enter') {
+        // Passo de entrada: desliza até a boca e esmaece até sumir no fim.
+        views.push({
+          train: move.train,
+          x: from.x + (to.x - from.x) * progress,
+          y: from.y + (to.y - from.y) * progress,
+          angle: lerpAngle(
+            directionAngle(move.fromDirection),
+            directionAngle(move.toDirection),
+            progress,
+          ),
+          scale: 1,
+          alpha: tunnelEnterAlpha(raw, duration),
+        });
+        continue;
+      }
+
+      if (move.tunnel === 'emerge') {
+        // Passo de travessia: nasce na boca do PARCEIRO (atrás do centro,
+        // contra a direção), desliza para fora e fica no centro até o fim.
+        // A origem geométrica do evento é o outro portal; ignorá-la é o que
+        // impede o deslize reto atravessando o tabuleiro.
+        const mix = tunnelEmergeMix(raw, duration);
+        const back = layout.cell * TUNNEL_EMERGE_BACK_RATIO * (1 - mix);
+        const outward = directionOffset(move.toDirection);
+
+        views.push({
+          train: move.train,
+          x: to.x - outward.col * back,
+          y: to.y - outward.row * back,
+          angle: directionAngle(move.toDirection),
+          scale: 1,
+          alpha: mix,
+        });
+        continue;
+      }
 
       views.push({
         train: move.train,
@@ -630,6 +680,13 @@ function buildTrainViews(now: number): TrainView[] {
     const status = train.status;
 
     if (status.kind !== 'waiting' && status.kind !== 'running') {
+      continue;
+    }
+
+    // Entre os dois tempos da travessia o trem está DENTRO do portal: o
+    // snapshot ainda o mantém em `running` na boca, mas desenhá-lo ali
+    // quebraria o «entrou e sumiu» (E18).
+    if (status.kind === 'running' && isInsideTunnel(game.state.board, status)) {
       continue;
     }
 

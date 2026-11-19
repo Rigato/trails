@@ -106,6 +106,8 @@ export interface Tuning {
   readonly lifeLostPulseMs: number;
   /** Saída visual do trem descarrilado (D1). */
   readonly derailExitMs: number;
+  /** Fade de entrada/saída do trem no túnel (E18); limitado por `stepDurationMs`. */
+  readonly tunnelFadeMs: number;
   /** Pulso contínuo na peça do primeiro giro (D6), até a primeira ação. */
   readonly firstHintPulseMs: number;
   /** Flash discreto em toque nulo (D3). */
@@ -140,6 +142,7 @@ export const TUNING: Tuning = {
   deliverPulseScale: 1.25,
   lifeLostPulseMs: 350,
   derailExitMs: 300,
+  tunnelFadeMs: 160,
   firstHintPulseMs: 900,
   nullTouchFlash: 'cellFlash',
   blockedTouchFlash: 'cellFlash',

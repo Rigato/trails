@@ -3,18 +3,21 @@
  *
  * Este módulo concentra o que é «sensação» e não é regra: curvas de tempo,
  * flashes de toque sem ação (D3), pulse de entrega (D5), saída do trem
- * descarrilado (D1), halo do primeiro giro (D6), varredura da seta do Y e
- * pulse da marca de vida perdida (E8). Tudo é função de `now` — nenhum estado
+ * descarrilado (D1), halo do primeiro giro (D6), varredura da seta do Y,
+ * pulse da marca de vida perdida (E8), crossfade do Y (D12-v2) e travessia do
+ * túnel em dois tempos (E18). Tudo é função de `now` — nenhum estado
  * escondido, nenhum timer próprio — para o loop único de `main.ts` desenhar
  * qualquer quadro a partir do mesmo relógio.
  *
  * A duração de cada efeito vem de `config/tuning.ts` (`yToggleMs`,
- * `lifeLostPulseMs`); aqui só vivem as curvas e o traço. O flash usa uma
- * constante curta (o suficiente para confirmar o toque sem ensinar por ruído);
- * o halo do D6 respira no período `firstHintPulseMs`.
+ * `lifeLostPulseMs`, `derailExitMs`, `tunnelFadeMs`); aqui só vivem as curvas
+ * e o traço. O flash usa uma constante curta (o suficiente para confirmar o
+ * toque sem ensinar por ruído); o halo do D6 respira no período
+ * `firstHintPulseMs`.
  */
 
 import type {
+  Board,
   CellPos,
   Color,
   DerailReason,
@@ -24,8 +27,9 @@ import type {
   Prediction,
   Train,
   TrainId,
+  TrainStatus,
 } from '../core/types';
-import { cellAt, directionOffset } from '../core/types';
+import { cellAt, cellsEqual, directionOffset } from '../core/types';
 import type { StepEasing } from '../config/tuning';
 import { TUNING } from '../config/tuning';
 import { cellCenter, cellRect, type SceneLayout } from './layout';
@@ -344,6 +348,125 @@ export function yArmMix(arm: 0 | 1, toggleAngleRad?: number): number {
   }
 
   return clamp01(toggleAngleRad / Math.PI);
+}
+
+/**
+ * Como um movimento visual se relaciona com os portais do túnel (E18).
+ *
+ * - `enter`: o destino é um portal e o trem vem de fora dele — o passo de
+ *   entrada; o trem desliza para a boca e esmaece ao fim do passo.
+ * - `emerge`: a origem é um portal e o destino é o PARCEIRO — o passo de
+ *   travessia; o trem aparece na boca do parceiro e desliza para fora dela.
+ * - `null`: movimento comum.
+ *
+ * A classificação é geométrica (o par está no board), independente de o trem
+ * ter sobrevivido à chegada: uma colisão no parceiro ainda é uma travessia e
+ * deve emergir antes de virar fantasma.
+ */
+export type TunnelMotion = 'enter' | 'emerge' | null;
+
+export function tunnelMotion(
+  board: Board,
+  from: CellPos | null,
+  to: CellPos,
+): TunnelMotion {
+  if (from !== null) {
+    const source = cellAt(board, from);
+
+    if (
+      source?.kind === 'fixed' &&
+      source.fixed.kind === 'tunnel' &&
+      cellsEqual(source.fixed.exit, to)
+    ) {
+      return 'emerge';
+    }
+  }
+
+  const destination = cellAt(board, to);
+
+  if (
+    destination?.kind === 'fixed' &&
+    destination.fixed.kind === 'tunnel'
+  ) {
+    return 'enter';
+  }
+
+  return null;
+}
+
+/**
+ * O trem está DENTRO de um portal, entre os dois tempos da travessia?
+ *
+ * Depois do passo de entrada (sem `justTunneled`), o trem fica invisível na
+ * boca até a ação que dispara a travessia. O snapshot continua mostrando o
+ * trem `running` no portal; o render é que o esconde. Ao emergir, o core marca
+ * `justTunneled`, e o trem volta a ser desenhado no parceiro.
+ */
+export function isInsideTunnel(board: Board, status: TrainStatus): boolean {
+  if (status.kind !== 'running' || status.justTunneled === true) {
+    return false;
+  }
+
+  const content = cellAt(board, status.cell);
+
+  return content?.kind === 'fixed' && content.fixed.kind === 'tunnel';
+}
+
+/** Fração do passo ocupada pelo fade do túnel, em [0, 1]. */
+function tunnelFadeFraction(stepMs: number, fadeMs: number): number {
+  if (!(stepMs > 0) || !(fadeMs > 0)) {
+    return 0;
+  }
+
+  return clamp01(fadeMs / stepMs);
+}
+
+/**
+ * Alpha do trem no passo de ENTRADA do túnel (1 → 0 no fim do passo).
+ *
+ * O fade ocupa os últimos `tunnelFadeMs` do passo (160 de 180 ms); a curva é
+ * `1 - fade²`, então o trem continua legível quase até a boca e some no
+ * instante em que o passo fecha. No fim do passo ele está no centro do portal
+ * com alpha 0 — «entrou e sumiu», sem deslizar para o parceiro.
+ */
+export function tunnelEnterAlpha(
+  progress: number,
+  stepMs = TUNING.stepDurationMs,
+  fadeMs = TUNING.tunnelFadeMs,
+): number {
+  const fraction = tunnelFadeFraction(stepMs, fadeMs);
+  const t = clamp01(progress);
+
+  if (fraction <= 0) {
+    return t < 1 ? 1 : 0;
+  }
+
+  const fade = clamp01((t - (1 - fraction)) / fraction);
+  return 1 - fade * fade;
+}
+
+/**
+ * Mistura do trem no passo de EMERGÊNCIA do túnel (0 → 1).
+ *
+ * Nos primeiros `tunnelFadeMs` do passo o trem sai de alpha 0 para 1, com
+ * `easeOutQuad`; o mesmo valor desloca o trem da boca (atrás do centro, contra
+ * a direção de viagem) até o centro. Depois do fade ele fica parado no centro
+ * até o passo fechar — no passo seguinte sai normalmente para o trilho.
+ */
+export function tunnelEmergeMix(
+  progress: number,
+  stepMs = TUNING.stepDurationMs,
+  fadeMs = TUNING.tunnelFadeMs,
+): number {
+  const fraction = tunnelFadeFraction(stepMs, fadeMs);
+  const t = clamp01(progress);
+
+  if (fraction <= 0) {
+    return 1;
+  }
+
+  const mix = clamp01(t / fraction);
+  return 1 - (1 - mix) * (1 - mix);
 }
 
 /** Intensidade do flash (1 no toque, 0 no fim); curva quadrática discreta. */

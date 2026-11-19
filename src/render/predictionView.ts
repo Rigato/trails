@@ -55,6 +55,13 @@ const DASH_WIDTH_RATIO = 0.07;
 const UNDERLAY_TRACK_RATIO = 0.75;
 /** Alpha do canal: pista suave, o trilho continua visível por baixo. */
 const UNDERLAY_ALPHA = 0.6;
+/**
+ * Onde o traço da previsão encosta na boca do portal: fração da célula a partir
+ * do centro, na direção da entrada/saída. Fica dentro do vão escuro desenhado
+ * em `board.ts` (a boca tem 0,62 célula de largura), então o arremate some no
+ * túnel em vez de parar antes da moldura.
+ */
+const PORTAL_MOUTH_INSET_RATIO = 0.26;
 
 interface Point {
   readonly x: number;
@@ -112,6 +119,17 @@ function edgePoint(center: Point, side: Direction, half: number): Point {
   return {
     x: center.x + offset.col * half,
     y: center.y + offset.row * half,
+  };
+}
+
+/** Ponto dentro da boca do portal, no lado por onde o traço entra ou sai. */
+function portalMouth(center: Point, side: Direction, cell: number): Point {
+  const offset = directionOffset(side);
+  const inset = cell * PORTAL_MOUTH_INSET_RATIO;
+
+  return {
+    x: center.x + offset.col * inset,
+    y: center.y + offset.row * inset,
   };
 }
 
@@ -226,7 +244,9 @@ function routeFade(
  * Cada célula contribui com o trecho que o trem percorreria: a peça inteira
  * (reta ou arco), a ligação entre bordas de uma célula sem peça, ou o trecho
  * até o centro quando a rota morre sem saída. A estação não recebe pontilhado:
- * o marcador de parada fala por ela.
+ * o marcador de parada fala por ela. O túnel também não recebe o salto: o
+ * traço morre na boca de entrada e retoma na boca do parceiro, sem pintar o
+ * corredor entre os portais (o trem passa por baixo).
  */
 function tracePredictionRoute(
   ctx: CanvasRenderingContext2D,
@@ -261,6 +281,12 @@ function tracePredictionRoute(
 
   function lineTo(point: Point): void {
     ctx.lineTo(point.x, point.y);
+    cursor = point;
+  }
+
+  /** Começa um novo subcaminho: o salto do túnel não vira linha de superfície. */
+  function restart(point: Point): void {
+    ctx.moveTo(point.x, point.y);
     cursor = point;
   }
 
@@ -306,6 +332,24 @@ function tracePredictionRoute(
       if (entrySide !== undefined) {
         place(edgePoint(center, entrySide, half));
       }
+      continue;
+    }
+
+    if (content?.kind === 'fixed' && content.fixed.kind === 'tunnel') {
+      // O túnel é um buraco, não um atalho de superfície. O traço morre na boca
+      // de entrada e só retoma na boca do portal de saída, num subcaminho novo:
+      // nada é pintado entre A e B, nem pelo traço nem pelo canal claro.
+      if (entrySide !== undefined) {
+        place(edgePoint(center, entrySide, half));
+        lineTo(portalMouth(center, entrySide, layout.cell));
+      }
+
+      if (exitSide !== undefined) {
+        const mouth = portalMouth(center, exitSide, layout.cell);
+        restart(mouth);
+        lineTo(edgePoint(center, exitSide, half));
+      }
+
       continue;
     }
 
