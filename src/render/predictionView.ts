@@ -8,9 +8,14 @@
  * dash, derivado de `now` e de `predictionDashMs`: recalcular a previsão não
  * reinicia a fase, então a linha não pisca.
  *
- * A parada tem aparência própria: anel na estação certa, X na estação errada,
- * seta na borda, sinal de proibido em célula sem saída e anel com marcador no
- * loop (D2).
+ * A parada tem aparência própria: anel na estação certa, X no canto superior
+ * direito da estação errada (fora do símbolo do par), seta na borda, sinal de
+ * proibido em célula sem saída e anel com marcador no loop (D2).
+ *
+ * V-1: o traço colorido ganha um canal claro (cor de fundo) por baixo, largo o
+ * bastante para o dash respirar sobre o trilho escuro. O canal é desenhado em
+ * um passe separado para TODAS as previsões antes de qualquer traço colorido —
+ * assim a segunda rota não apaga a primeira no corredor compartilhado.
  */
 
 import type {
@@ -40,6 +45,10 @@ const DOT_GAP_RATIO = 0.16;
 /** Padrão alternativo para o 2º par: traços curtos em vez de pontos. */
 const DASH_LENGTH_RATIO = 0.07;
 const DASH_GAP_RATIO = 0.13;
+/** Largura do traço colorido como fração da célula. */
+const DASH_WIDTH_RATIO = 0.07;
+/** Extensão do canal claro sob o dash, em fração da célula (V-1). */
+const UNDERLAY_EXTRA_RATIO = 0.12;
 
 interface Point {
   readonly x: number;
@@ -274,12 +283,46 @@ function tracePredictionRoute(
 }
 
 /**
- * Desenha a previsão de um trem.
+ * Canal claro sob a rota de uma previsão (V-1).
+ *
+ * O traço colorido a 55% sobre o trilho escuro (#3a3f44) perde contraste; este
+ * passe pinta o MESMO caminho com a cor de fundo e uma largura moderada
+ * (`dash + 0,12 célula`), criando um corredor claro sem tocar nas peças fora da
+ * rota. O chamador desenha todos os canais antes dos traços coloridos.
+ */
+export function drawPredictionUnderlay(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  board: Board,
+  prediction: Prediction,
+): void {
+  if (prediction.path.length === 0 || layout.cell <= 0) {
+    return;
+  }
+
+  const dashWidth = Math.max(MIN_STROKE, layout.cell * DASH_WIDTH_RATIO);
+
+  ctx.save();
+  ctx.strokeStyle = PALETTE.background;
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = dashWidth + layout.cell * UNDERLAY_EXTRA_RATIO;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  tracePredictionRoute(ctx, layout, board, prediction);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Desenha o traço colorido e o marcador de parada de uma previsão.
  *
  * O trajeto já vem do core; o render só escolhe a geometria de cada célula e
  * o marcador do ponto de parada. `now` move a marcha dos pontinhos. `variant`
  * alterna o padrão (0 = pontos redondos, 1 = traços curtos) para dois trens
- * simultâneos não serem confundidos só pela cor.
+ * simultâneos não serem confundidos só pela cor. O canal claro (V-1) é um
+ * passe separado, desenhado antes de todos os traços.
  */
 export function drawPrediction(
   ctx: CanvasRenderingContext2D,
@@ -311,7 +354,7 @@ export function drawPrediction(
 
   // Marcha contínua: um único caminho + offset de dash dependente do relógio.
   ctx.globalAlpha = PALETTE.predictionAlpha;
-  ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.07);
+  ctx.lineWidth = Math.max(MIN_STROKE, cellSize * DASH_WIDTH_RATIO);
   ctx.setLineDash([dashLength, dashGap]);
   ctx.lineDashOffset = dashOffset(cellSize, now, dashLength + dashGap);
 
@@ -350,14 +393,18 @@ function drawStopMarker(
         ctx.arc(center.x, center.y, cellSize * 0.44, 0, Math.PI * 2);
         ctx.stroke();
       } else {
-        // X sobre a estação: cor errada, a previsão avisa antes do passo.
-        const reach = cellSize * 0.26;
-        ctx.lineWidth = Math.max(MIN_STROKE + 1, cellSize * 0.075);
+        // X no canto superior direito da célula (V-2): menor e deslocado para
+        // fora do símbolo do par, preservando a casa, o quadrado/círculo e o
+        // anel da chegada correta (GDD §5).
+        const x = center.x + cellSize * 0.22;
+        const y = center.y - cellSize * 0.22;
+        const reach = cellSize * 0.16;
+        ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.055);
         ctx.beginPath();
-        ctx.moveTo(center.x - reach, center.y - reach);
-        ctx.lineTo(center.x + reach, center.y + reach);
-        ctx.moveTo(center.x + reach, center.y - reach);
-        ctx.lineTo(center.x - reach, center.y + reach);
+        ctx.moveTo(x - reach, y - reach);
+        ctx.lineTo(x + reach, y + reach);
+        ctx.moveTo(x + reach, y - reach);
+        ctx.lineTo(x - reach, y + reach);
         ctx.stroke();
       }
       break;

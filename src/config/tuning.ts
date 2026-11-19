@@ -46,7 +46,7 @@ export interface Tuning {
   readonly rotationMs: number;
   /** Sobregiro leve ao parar (leitura de direção). */
   readonly rotationOvershoot: number;
-  /** Swing da agulha do Y na troca de ponta ativa. */
+  /** Swing da agulha do Y na troca de ponta ativa. Limitado por `stepDurationMs` (o giro nunca sobrevive ao passo). */
   readonly yToggleMs: number;
   /** Pausa extra entre passos drenados do buffer. */
   readonly bufferedStepGapMs: number;

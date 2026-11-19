@@ -28,7 +28,7 @@ import {
 } from './fx';
 import { drawHud } from './hud';
 import type { SceneLayout } from './layout';
-import { drawPrediction } from './predictionView';
+import { drawPrediction, drawPredictionUnderlay } from './predictionView';
 import { drawTrainAt } from './train';
 
 const PALETTE = TUNING.palette;
@@ -84,6 +84,42 @@ export function drawScene(
 
   drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales, scene.needleAngles);
 
+  const trainsById = new Map<TrainId, Train>();
+  for (const train of state.trains) {
+    trainsById.set(train.id, train);
+  }
+
+  const predictionViews: {
+    prediction: Prediction;
+    color: string;
+    variant: number;
+  }[] = [];
+
+  for (const prediction of scene.predictions) {
+    const train = trainsById.get(prediction.trainId);
+
+    if (train === undefined) {
+      continue;
+    }
+
+    const trainIndex = state.trains.findIndex(
+      (candidate) => candidate.id === prediction.trainId,
+    );
+
+    predictionViews.push({
+      prediction,
+      color: train.color,
+      variant: Math.max(0, trainIndex) % 2,
+    });
+  }
+
+  // V-1: todos os canais claros primeiro; assim uma segunda rota não apaga a
+  // primeira no corredor compartilhado. O hint/flash ficam por cima do canal e
+  // por baixo do traço colorido.
+  for (const view of predictionViews) {
+    drawPredictionUnderlay(ctx, layout, state.board, view.prediction);
+  }
+
   // D6: o halo fica SOB a previsão — o traço e o marcador de parada continuam
   // sendo a leitura principal; o anel só enquadra a peça do primeiro giro.
   if (scene.firstHint) {
@@ -94,29 +130,16 @@ export function drawScene(
     drawCellFlash(ctx, layout, flash, now);
   }
 
-  const trainsById = new Map<TrainId, Train>();
-  for (const train of state.trains) {
-    trainsById.set(train.id, train);
-  }
-
-  for (const prediction of scene.predictions) {
-    const train = trainsById.get(prediction.trainId);
-
-    if (train !== undefined) {
-      const trainIndex = state.trains.findIndex(
-        (candidate) => candidate.id === prediction.trainId,
-      );
-
-      drawPrediction(
-        ctx,
-        layout,
-        state.board,
-        prediction,
-        train.color,
-        now,
-        Math.max(0, trainIndex) % 2,
-      );
-    }
+  for (const view of predictionViews) {
+    drawPrediction(
+      ctx,
+      layout,
+      state.board,
+      view.prediction,
+      view.color,
+      now,
+      view.variant,
+    );
   }
 
   for (const pulse of scene.pulses) {

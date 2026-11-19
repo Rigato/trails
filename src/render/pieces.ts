@@ -15,53 +15,13 @@
  * mostra só o estado atual, nunca a próxima ação ABAB.
  */
 
-import type { Direction, Piece, YPiece } from '../core/types';
-import { turnClockwise } from '../core/types';
+import type { Piece, YPiece } from '../core/types';
 import { TUNING } from '../config/tuning';
 
 /** Espessura mínima do trilho em px CSS (legibilidade em DPR 1). */
 const MIN_TRACK_WIDTH = 2;
 /** Contorno mínimo da agulha em px CSS. */
 const MIN_NEEDLE_OUTLINE = 1.5;
-
-/** Lados do Y na orientação atual (convenção canônica do contrato). */
-export interface YSides {
-  readonly stub: Direction;
-  readonly arm0: Direction;
-  readonly arm1: Direction;
-  readonly closed: Direction;
-}
-
-/** Gira uma direção `rot` quartos CW. */
-function rotateDirection(direction: Direction, rot: number): Direction {
-  let result = direction;
-
-  for (let turn = 0; turn < rot; turn += 1) {
-    result = turnClockwise(result);
-  }
-
-  return result;
-}
-
-/**
- * Lados do Y na convenção do core: rot 0 = talo N, braço 0 L, braço 1 O,
- * fechado S. Cada quarto de volta gira os quatro lados juntos.
- */
-export function ySides(piece: YPiece): YSides {
-  return {
-    stub: rotateDirection('north', piece.rot),
-    arm0: rotateDirection('east', piece.rot),
-    arm1: rotateDirection('west', piece.rot),
-    closed: rotateDirection('south', piece.rot),
-  };
-}
-
-/** Lado da ponta ativa (o braço que o talo alcança). */
-export function yActiveSide(piece: YPiece): Direction {
-  const sides = ySides(piece);
-
-  return piece.arm === 0 ? sides.arm0 : sides.arm1;
-}
 
 /**
  * Constrói o traçado canônico de uma peça no contexto atual, sem espessura nem
