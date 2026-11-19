@@ -102,6 +102,15 @@ export function validateLayout(layout: LevelLayout): void {
     }
   }
 
+  if (
+    layout.lives !== undefined &&
+    (!Number.isInteger(layout.lives) || layout.lives < 1)
+  ) {
+    throw new Error(
+      'Layout inválido: lives deve ser um inteiro ≥ 1 quando presente.',
+    );
+  }
+
   if (layout.trains.length === 0) {
     throw new Error('Layout inválido: a fase precisa de ao menos um trem.');
   }
@@ -185,6 +194,7 @@ function makeInitialState(layout: LevelLayout): GameState {
     levelId: layout.id,
     board: layout.board,
     trains,
+    lives: layout.lives ?? null,
     step: 0,
     status: 'ready',
   };
@@ -207,14 +217,24 @@ function applyToState(state: GameState, action: Action): ApplyResult {
   const events: GameEvent[] = [];
   let board = state.board;
 
-  if (outcome.kind === 'rotated') {
+  if (outcome.kind === 'rotated' || outcome.kind === 'toggled') {
     board = withRotatedPiece(board, outcome.cell, outcome.to);
-    events.push({
-      kind: 'pieceRotated',
-      cell: outcome.cell,
-      from: outcome.from,
-      to: outcome.to,
-    });
+
+    if (outcome.kind === 'toggled') {
+      events.push({
+        kind: 'pieceToggled',
+        cell: outcome.cell,
+        from: outcome.from,
+        to: outcome.to,
+      });
+    } else {
+      events.push({
+        kind: 'pieceRotated',
+        cell: outcome.cell,
+        from: outcome.from,
+        to: outcome.to,
+      });
+    }
   }
 
   const resolution = resolveStep({ ...state, board });

@@ -17,6 +17,7 @@ import {
   straight,
   trainById,
   trainSetup,
+  y,
 } from './helpers';
 
 function corridor() {
@@ -131,6 +132,47 @@ describe('ActionBuffer — dreno e revalidação (D4)', () => {
       kind: 'running',
       cell: pos(0, 1),
       incoming: 'east',
+    });
+    expect(buffer.isEmpty).toBe(true);
+  });
+
+  it('toggle de Y enfileirado que virou célula ocupada é descartado (D4)', () => {
+    const level = makeLevel(
+      'y-buffer',
+      board([
+        [EMPTY, EMPTY, EMPTY],
+        [entry('east'), y(0, 0, 'toggle'), EMPTY],
+        [EMPTY, EMPTY, EMPTY],
+      ]),
+      [trainSetup('red', RED, 'circle', pos(0, 1))],
+    );
+    const game = makeGame(level);
+
+    game.apply({ kind: 'pass' }); // trem na entrada; Y livre
+
+    const buffer = new ActionBuffer();
+
+    buffer.enqueue({ kind: 'pass' }); // move o trem para o Y
+    buffer.enqueue({ kind: 'tap', cell: pos(1, 1) }); // Y vira ocupado
+
+    const results = buffer.drain(game.apply);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.advanced).toBe(true);
+    expect(results[1]?.advanced).toBe(false);
+    expect(results[1]?.outcome).toEqual({
+      kind: 'blocked',
+      reason: 'train',
+    });
+    expect(game.state.step).toBe(2);
+    expect(trainById(game, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(1, 1),
+      incoming: 'east',
+    });
+    expect(cellAt(game.state.board, pos(1, 1))).toEqual({
+      kind: 'piece',
+      piece: { kind: 'y', rot: 0, arm: 0, next: 'toggle' },
     });
     expect(buffer.isEmpty).toBe(true);
   });

@@ -17,6 +17,7 @@ import type {
   Piece,
   Rotation,
   Train,
+  YPiece,
 } from './types';
 import { cellAt, cellsEqual, inBounds } from './types';
 
@@ -31,8 +32,9 @@ const NEXT_ROTATION: Readonly<Record<Rotation, Rotation>> = {
 /**
  * Gira uma peça 90° no sentido horário.
  *
- * Reta e curva compartilham a mesma aritmética de `rot`; a orientação
- * canônica está documentada em `types.ts`.
+ * Reta, curva e Y compartilham a aritmética de `rot`; no Y o braço é preservado
+ * e `next` volta para `'toggle'` (o toque foi um giro). A escolha ABAB entre
+ * girar e trocar o braço fica em `classifyTap`/`togglePieceArm`.
  */
 export function rotatePieceCW(piece: Piece): Piece {
   const rot = NEXT_ROTATION[piece.rot];
@@ -42,7 +44,27 @@ export function rotatePieceCW(piece: Piece): Piece {
       return { kind: 'straight', rot };
     case 'curve':
       return { kind: 'curve', rot };
+    case 'y':
+      return {
+        kind: 'y',
+        rot,
+        arm: piece.arm,
+        next: 'toggle',
+      };
   }
+}
+
+/**
+ * Troca a ponta ativa do Y (ABAB/D8): o braço relativo Alterna 0↔1 e a próxima
+ * ação passa a ser `'rotate'`. O `rot` não muda.
+ */
+export function togglePieceArm(piece: YPiece): YPiece {
+  return {
+    kind: 'y',
+    rot: piece.rot,
+    arm: piece.arm === 0 ? 1 : 0,
+    next: 'rotate',
+  };
 }
 
 /** Trem `running` que ocupa `cell`, se houver. Trem `waiting` não ocupa. */
@@ -52,9 +74,13 @@ export function runningTrainAt(state: GameState, cell: CellPos): Train | undefin
   );
 }
 
-/** O jogo terminou (vitória ou estado não-vencível de D1)? */
+/** O jogo terminou (vitória, estado não-vencível de D1 ou derrota D7/D11)? */
 function isFinished(state: GameState): boolean {
-  return state.status === 'won' || state.status === 'deadEnd';
+  return (
+    state.status === 'won' ||
+    state.status === 'deadEnd' ||
+    state.status === 'lost'
+  );
 }
 
 /**
@@ -65,7 +91,9 @@ function isFinished(state: GameState): boolean {
  * 2. fora da grade → `null/outOfBounds`;
  * 3. célula ocupada por trem → `blocked/train` (§3.2);
  * 4. vazio → `null/empty`; elemento fixo → `null/fixed`;
- * 5. peça livre → `rotated` com a peça antes/depois.
+ * 5. peça livre → `rotated` ou `toggled`, com a peça antes/depois. No Y, o
+ *    ABAB por peça decide: `next === 'toggle'` troca o braço; `next ===
+ *    'rotate'` gira 90° CW.
  */
 export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
   if (isFinished(state)) {
@@ -94,11 +122,22 @@ export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
     return { kind: 'null', reason: 'fixed' };
   }
 
+  const piece = content.piece;
+
+  if (piece.kind === 'y' && piece.next === 'toggle') {
+    return {
+      kind: 'toggled',
+      cell,
+      from: piece,
+      to: togglePieceArm(piece),
+    };
+  }
+
   return {
     kind: 'rotated',
     cell,
-    from: content.piece,
-    to: rotatePieceCW(content.piece),
+    from: piece,
+    to: rotatePieceCW(piece),
   };
 }
 
@@ -106,8 +145,9 @@ export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
  * Classifica uma ação do jogador.
  *
  * `pass` é sempre uma ação válida enquanto o jogo não terminou. Um `tap` passa
- * pela classificação de `classifyTap`. Apenas `rotated`/`passed` avançam o
- * passo; o buffer revalida a ação aplicando-a no momento de drenar (D4).
+ * pela classificação de `classifyTap`. `rotated`, `toggled` e `passed` avançam
+ * exatamente um passo; o buffer revalida a ação aplicando-a no momento de
+ * drenar (D4).
  */
 export function classifyAction(state: GameState, action: Action): ActionOutcome {
   if (isFinished(state)) {
@@ -124,15 +164,20 @@ export function classifyAction(state: GameState, action: Action): ActionOutcome 
 
 /** A classificação é uma ação válida que avança exatamente um passo? */
 export function isAdvancing(outcome: ActionOutcome): boolean {
-  return outcome.kind === 'rotated' || outcome.kind === 'passed';
+  return (
+    outcome.kind === 'rotated' ||
+    outcome.kind === 'toggled' ||
+    outcome.kind === 'passed'
+  );
 }
 
 /**
  * Devolve um novo `Board` com a peça de `cell` substituída por `piece`.
  *
  * O board anterior não é mutado. Só a linha afetada é recriada; as demais
- * linhas são compartilhadas. Lança se a célula não contiver peça (o chamador
- * só usa isto depois de uma classificação `rotated`).
+ * linhas são compartilhadas. Aceita giro e troca de braço do Y. Lança se a
+ * célula não contiver peça (o chamador só usa isto depois de uma classificação
+ * `rotated`/`toggled`).
  */
 export function withRotatedPiece(board: Board, cell: CellPos, piece: Piece): Board {
   const current: Cell | undefined = cellAt(board, cell);

@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { Piece, Rotation } from '../../src/core/types';
+import type { Piece, Rotation, YPiece } from '../../src/core/types';
 import { cellAt } from '../../src/core/types';
 import {
   classifyAction,
   isAdvancing,
   rotatePieceCW,
+  togglePieceArm,
   withRotatedPiece,
 } from '../../src/core/actions';
 import {
   board,
   EMPTY,
   entry,
+  gameState,
   makeGame,
   makeLevel,
   pos,
@@ -18,6 +20,7 @@ import {
   station,
   straight,
   trainSetup,
+  y,
 } from './helpers';
 
 /** Corredor de 5×3: entrada a oeste, 3 retas e estação a leste. */
@@ -50,6 +53,114 @@ describe('rotatePieceCW', () => {
       piece = rotatePieceCW(piece);
       expect(piece).toEqual({ kind: 'curve', rot: expected });
     }
+  });
+
+  it('gira o Y preservando o braço e voltando next para toggle', () => {
+    const piece: YPiece = { kind: 'y', rot: 2, arm: 1, next: 'rotate' };
+
+    expect(rotatePieceCW(piece)).toEqual({
+      kind: 'y',
+      rot: 3,
+      arm: 1,
+      next: 'toggle',
+    });
+  });
+});
+
+describe('togglePieceArm', () => {
+  it('alterna o braço 0↔1 e agenda rotate', () => {
+    const piece: YPiece = { kind: 'y', rot: 1, arm: 0, next: 'toggle' };
+
+    expect(togglePieceArm(piece)).toEqual({
+      kind: 'y',
+      rot: 1,
+      arm: 1,
+      next: 'rotate',
+    });
+    expect(togglePieceArm({ ...piece, arm: 1 })).toEqual({
+      kind: 'y',
+      rot: 1,
+      arm: 0,
+      next: 'rotate',
+    });
+  });
+});
+
+describe('ABAB por peça (D8)', () => {
+  it('1º toque troca, 2º gira, alternando para sempre', () => {
+    const cell = pos(0, 0);
+    let state = gameState(board([[y(0, 0, 'toggle')]]), []);
+    const expectedKinds = ['toggled', 'rotated', 'toggled', 'rotated'];
+    const expectedPieces = [
+      { kind: 'y', rot: 0, arm: 1, next: 'rotate' },
+      { kind: 'y', rot: 1, arm: 1, next: 'toggle' },
+      { kind: 'y', rot: 1, arm: 0, next: 'rotate' },
+      { kind: 'y', rot: 2, arm: 0, next: 'toggle' },
+    ];
+
+    for (let tap = 0; tap < 4; tap += 1) {
+      const outcome = classifyAction(state, { kind: 'tap', cell });
+
+      expect(outcome.kind).toBe(expectedKinds[tap]);
+      expect(isAdvancing(outcome)).toBe(true);
+
+      if (outcome.kind !== 'toggled' && outcome.kind !== 'rotated') {
+        throw new Error('esperava toggled/rotated');
+      }
+
+      expect(outcome.to).toEqual(expectedPieces[tap]);
+      state = {
+        ...state,
+        board: withRotatedPiece(state.board, cell, outcome.to),
+      };
+    }
+  });
+
+  it('dois Ys têm alternâncias independentes', () => {
+    const cellA = pos(0, 0);
+    const cellB = pos(1, 0);
+    let state = gameState(
+      board([[y(0, 0, 'toggle'), y(0, 0, 'toggle')]]),
+      [],
+    );
+
+    const first = classifyAction(state, { kind: 'tap', cell: cellA });
+
+    expect(first.kind).toBe('toggled');
+
+    if (first.kind !== 'toggled') {
+      throw new Error('esperava toggled em A');
+    }
+
+    state = {
+      ...state,
+      board: withRotatedPiece(state.board, cellA, first.to),
+    };
+
+    // B não foi tocado: continua arm 0 / next toggle.
+    expect(cellAt(state.board, cellB)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'y', rot: 0, arm: 0, next: 'toggle' },
+    });
+
+    const second = classifyAction(state, { kind: 'tap', cell: cellB });
+
+    expect(second.kind).toBe('toggled');
+
+    if (second.kind !== 'toggled') {
+      throw new Error('esperava toggled em B');
+    }
+
+    state = {
+      ...state,
+      board: withRotatedPiece(state.board, cellB, second.to),
+    };
+
+    // A manteve o resultado do primeiro toque.
+    expect(cellAt(state.board, cellA)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'y', rot: 0, arm: 1, next: 'rotate' },
+    });
   });
 });
 

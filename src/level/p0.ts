@@ -75,10 +75,10 @@ import type {
 import { TUNING } from '../config/tuning';
 
 /**
- * Cor do par trem/estação do P0 — default vivo do tuning (§6, `palette.pair`).
+ * Cor do par trem/estação do P0 — default vivo do tuning (§6, `pairs[0]`).
  * A fase continua sendo o dado; fases futuras declaram as cores dos seus pares.
  */
-const RED: Color = TUNING.palette.pair;
+const RED: Color = TUNING.palette.pairs[0];
 
 /** Forma redundante do par trem/estação (acessibilidade, GDD §5). */
 const PAIR_SHAPE: Shape = 'circle';

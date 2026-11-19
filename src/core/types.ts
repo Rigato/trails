@@ -51,8 +51,8 @@ export interface CellPos {
 /** Quarto de volta no sentido horário (CW), a partir da orientação canônica. */
 export type Rotation = 0 | 1 | 2 | 3;
 
-/** Tipo de peça móvel implementado no P0. */
-export type PieceKind = 'straight' | 'curve';
+/** Tipo de peça móvel. */
+export type PieceKind = 'straight' | 'curve' | 'y';
 
 /**
  * Reta: dois lados opostos.
@@ -77,6 +77,46 @@ export interface CurvePiece {
 }
 
 /**
+ * Y (desvio): talo + duas pontas; um lado fechado.
+ *
+ * Abreviações: N = norte, L = leste, S = sul, O = oeste.
+ *
+ * Orientação canônica (`rot: 0`): talo ao NORTE, ponta do braço 0 ao LESTE,
+ * ponta do braço 1 ao OESTE e lado SUL fechado. `rot` gira o conjunto inteiro
+ * 90° CW; `arm` é relativo à peça (viaja com a rotação):
+ *
+ * | rot | talo | braço 0 | braço 1 | fechado |
+ * |---|---|---|---|---|
+ * | 0 | N | L | O | S |
+ * | 1 | L | S | N | O |
+ * | 2 | S | O | L | N |
+ * | 3 | O | N | S | L |
+ *
+ * Fluxo (GDD §3.2): trem que entra pelo talo sai pela ponta ATIVA; trem que
+ * entra por QUALQUER ponta (ativa ou inativa) sai pelo talo; o lado fechado
+ * não tem saída. Uma célula de Y comporta um trem por vez.
+ *
+ * Controle ABAB por peça (D8): `next` é a PRÓXIMA ação e começa `'toggle'`.
+ * Todo toque inverte `next` — `'toggle'` troca `arm` e vira `'rotate'`;
+ * `'rotate'` gira `rot` 90° CW e vira `'toggle'`. O primeiro toque de cada Y é
+ * sempre trocar a ponta ativa. Dois Ys têm alternâncias independentes.
+ *
+ * Nota de leitura §3.10-Y: dois trens que entram pelo Y em pontas opostas no
+ * mesmo passo chegam à célula do Y no mesmo passo; o compute-then-resolve
+ * trata isso como colisão NA CÉLULA DO Y. «Saem pelo talo» descreve a
+ * trajetória pretendida, não uma célula destino separada. Trocas através do Y
+ * seguem a regra geral de swap.
+ */
+export interface YPiece {
+  readonly kind: 'y';
+  readonly rot: Rotation;
+  /** Braço ativo relativo à peça: 0 = base leste, 1 = base oeste. */
+  readonly arm: 0 | 1;
+  /** Próxima ação do ABAB: `toggle` troca a ponta; `rotate` gira 90° CW. */
+  readonly next: 'toggle' | 'rotate';
+}
+
+/**
  * Peça móvel de trilho.
  *
  * `rot` é o número de quartos de volta CW a partir da orientação canônica
@@ -87,12 +127,13 @@ export interface CurvePiece {
  * As conexões são lados da célula. Um trem que viaja na direção `D` entra
  * pelo lado `opposite(D)` e sai pelo outro lado conectado; a direção de saída
  * é o lado por onde ele sai. Exemplo: reta leste–oeste com trem viajando para
- * leste entra pelo lado oeste e sai para leste (não volta).
+ * leste entra pelo lado oeste e sai para leste (não volta). Isso vale para
+ * reta e curva; o Y tem três lados e fluxo próprio em `YPiece`.
  *
- * Y (P1) e cruzamento (P3) entram como novas variantes desta união, sem mudar
- * o formato `{ kind, rot }` das peças existentes.
+ * Y (P1) já é uma variante desta união. Cruzamento (P3) entra como nova
+ * variante aditiva, com case novo em `movement.ts`/`actions.ts`.
  */
-export type Piece = StraightPiece | CurvePiece;
+export type Piece = StraightPiece | CurvePiece | YPiece;
 
 /**
  * Estação: elemento fixo que não gira.
@@ -251,20 +292,25 @@ export interface TrainSetup {
  * (`level/p0.ts`). Integridade (entrada na borda apontando para dentro, uma
  * estação por cor, etc.) é validada no setup do jogo; o dado é editável sem
  * tocar no motor.
+ *
+ * `lives` ausente = fase sem vidas (D1 tutorial: a falha não existe como
+ * estado/custo). Quando presente, deve ser um inteiro ≥ 1 — validado no
+ * setup. O `GameState` inicial herda o valor (`null` quando ausente).
  */
 export interface LevelLayout {
   readonly id: string;
   readonly name: string;
   readonly board: Board;
   readonly trains: readonly TrainSetup[];
+  readonly lives?: number;
 }
 
 /**
  * Ação bruta do jogador submetida ao motor.
  *
  * Um `tap` ainda não é uma «ação válida» no sentido do GDD §3.3: o motor o
- * classifica em `ActionOutcome`, e só `rotated`/`passed` avançam exatamente um
- * passo. `pass` é o botão «passar turno».
+ * classifica em `ActionOutcome`, e só `rotated`/`toggled`/`passed` avançam
+ * exatamente um passo. `pass` é o botão «passar turno».
  *
  * O buffer de input (`buffer.ts`) guarda `Action` e a revalida no momento de
  * drenar (D4): um tap que virou célula ocupada não executa e não avança.
@@ -289,16 +335,25 @@ export type BlockedTapReason = 'train';
  * Classificação de uma `Action`.
  *
  * - `rotated`: giro 90° CW de uma peça livre; ação válida, o passo avança;
+ * - `toggled`: troca da ponta ativa de um Y (ABAB/D8); ação válida, o passo
+ *   avança como `rotated` (§3.3);
  * - `passed`: passar turno; ação válida, o passo avança;
  * - `null`: toque sem ação; nada acontece;
  * - `blocked`: toque em célula ocupada por trem; nada acontece;
- * - `ignored`: o jogo já terminou (vitória ou dead end); nada acontece.
+ * - `ignored`: o jogo já terminou (vitória, dead end ou lost); nada acontece.
  *
- * Apenas `rotated` e `passed` produzem `ApplyResult.advanced === true`.
+ * Apenas `rotated`, `toggled` e `passed` produzem `ApplyResult.advanced ===
+ * true`.
  */
 export type ActionOutcome =
   | {
       readonly kind: 'rotated';
+      readonly cell: CellPos;
+      readonly from: Piece;
+      readonly to: Piece;
+    }
+  | {
+      readonly kind: 'toggled';
       readonly cell: CellPos;
       readonly from: Piece;
       readonly to: Piece;
@@ -312,9 +367,10 @@ export type ActionOutcome =
  * Evento emitido por um passo resolvido.
  *
  * Ordem dentro de um passo, espelhando o GDD §3.6:
- * `pieceRotated` (se a ação foi um giro) → `trainMoved` (movimento calculado)
- * → `trainDelivered` (entregas) → `collision`/`trainDerailed` (colisões e
- * descarrilamentos) → `victory`/`deadEnd` (fim de jogo).
+ * `pieceRotated`/`pieceToggled` (ação) → `trainMoved` (movimento calculado)
+ * → `trainDelivered` (entregas) → coleta P2 (slot vazio no P0) →
+ * `collision`/`trainDerailed` (colisões e descarrilamentos) → `lifeLost`
+ * (consequência) → `victory`/`deadEnd` (fim de jogo).
  *
  * `trainMoved.from === null` significa entrada na grade pela célula de
  * entrada. `trainMoved` só é emitido para destino dentro da grade; saída pela
@@ -324,10 +380,23 @@ export type ActionOutcome =
  * no mesmo destino; duas para troca de células no mesmo passo). Cada
  * participante também recebe um `trainDerailed` com `reason: 'collision'`,
  * para que o consumidor trate toda saída de trem de forma uniforme.
+ *
+ * `lifeLost` é emitido uma vez por EVENTO que gasta vida — uma colisão,
+ * independentemente do número de trens, ou um descarrilamento independente —,
+ * não uma vez por trem. `step` é o passo resolvido (o `GameState.step`
+ * posterior) e `remaining` é o saldo de vidas depois do evento. Fase sem vidas
+ * (`GameState.lives === null`) não emite `lifeLost`. Em D11, o passo que zera
+ * as vidas termina em `lost`, mesmo com entrega no mesmo passo.
  */
 export type GameEvent =
   | {
       readonly kind: 'pieceRotated';
+      readonly cell: CellPos;
+      readonly from: Piece;
+      readonly to: Piece;
+    }
+  | {
+      readonly kind: 'pieceToggled';
       readonly cell: CellPos;
       readonly from: Piece;
       readonly to: Piece;
@@ -355,6 +424,13 @@ export type GameEvent =
       readonly trainIds: readonly TrainId[];
       readonly cells: readonly CellPos[];
     }
+  | {
+      readonly kind: 'lifeLost';
+      /** Passo resolvido que gastou a vida (mesmo número do snapshot). */
+      readonly step: number;
+      /** Vidas restantes depois deste evento. */
+      readonly remaining: number;
+    }
   | { readonly kind: 'victory' }
   | { readonly kind: 'deadEnd' };
 
@@ -366,9 +442,13 @@ export type GameEvent =
  * - `won`: nenhum trem ativo e ao menos uma entrega — vitória dinâmica
  *   (§3.7: trens perdidos saem do requisito);
  * - `deadEnd`: nenhum trem ativo e nenhuma entrega — o estado «sem trem ativo
- *   + entrega pendente» de D1; o core apenas expõe, a UI oferece recomeço.
+ *   + entrega pendente» de D1; o core apenas expõe, a UI oferece recomeço;
+ * - `lost`: as vidas chegaram a 0; a run termina em derrota (D7). Em D11,
+ *   `lost` tem precedência sobre `won`/`deadEnd` no mesmo passo: orçamento
+ *   esgotado encerra a run mesmo com entrega simultânea. Fase sem vidas
+ *   (`GameState.lives === null`) nunca chega a `lost`.
  */
-export type GameStatus = 'ready' | 'playing' | 'won' | 'deadEnd';
+export type GameStatus = 'ready' | 'playing' | 'won' | 'deadEnd' | 'lost';
 
 /**
  * Snapshot imutável do jogo.
@@ -377,11 +457,16 @@ export type GameStatus = 'ready' | 'playing' | 'won' | 'deadEnd';
  * bloqueado e ação ignorada não incrementam `step`. `board` é o estado atual
  * das peças (o giro altera uma peça entre passos); `trains` preserva a ordem
  * do layout.
+ *
+ * `lives` é o saldo da run: `null` = fase sem vidas (D1 tutorial), número =
+ * vidas restantes (0 no estado `lost`). O valor inicial vem de
+ * `LevelLayout.lives`; o passo que gasta a última vida leva a `lost`.
  */
 export interface GameState {
   readonly levelId: string;
   readonly board: Board;
   readonly trains: readonly Train[];
+  readonly lives: number | null;
   readonly step: number;
   readonly status: GameStatus;
 }
@@ -439,9 +524,10 @@ export type PredictionStop =
  * e `loop === true`; o render desenha o anel fechado com marcador (D2). Um
  * trem em loop continua ativo.
  *
- * O trajeto reflete o estado atual das peças e deve ser recalculado após
- * qualquer giro ou passo. `trainId` identifica a previsão; trens entregues ou
- * descarrilados não têm previsão (o motor devolve `undefined`).
+ * O trajeto reflete o estado atual das peças (incluindo o braço ativo de cada
+ * Y) e deve ser recalculado após qualquer giro, troca de ponta ou passo.
+ * `trainId` identifica a previsão; trens entregues ou descarrilados não têm
+ * previsão (o motor devolve `undefined`).
  */
 export interface Prediction {
   readonly trainId: TrainId;

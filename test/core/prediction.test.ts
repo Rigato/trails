@@ -27,6 +27,7 @@ import {
   trainInState,
   trainSetup,
   curve,
+  y,
 } from './helpers';
 
 function corridor(
@@ -213,6 +214,33 @@ describe('predictPath — recálculo e independência', () => {
       pos(3, 1),
       pos(4, 1),
     ]);
+  });
+
+  it('reflete o braço ativo do Y e recalcula após o toggle', () => {
+    const level = makeLevel(
+      'y-prediction',
+      board([
+        [EMPTY, entry('south'), EMPTY],
+        [EMPTY, y(0, 0, 'toggle'), EMPTY],
+        [EMPTY, EMPTY, EMPTY],
+      ]),
+      [trainSetup('red', RED, 'circle', pos(1, 0))],
+    );
+    const game = makeGame(level);
+
+    const before = game.prediction('red');
+
+    expect(before?.path).toEqual([pos(1, 0), pos(1, 1), pos(2, 1)]);
+    expect(before?.stop).toEqual({ kind: 'noExit', cell: pos(2, 1) });
+
+    const toggle = game.apply({ kind: 'tap', cell: pos(1, 1) });
+
+    expect(toggle.outcome.kind).toBe('toggled');
+
+    const after = game.prediction('red');
+
+    expect(after?.path).toEqual([pos(1, 0), pos(1, 1), pos(0, 1)]);
+    expect(after?.stop).toEqual({ kind: 'noExit', cell: pos(0, 1) });
   });
 
   it('ignora outros trens: o caminho atravessa a célula ocupada por outro trem', () => {

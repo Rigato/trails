@@ -126,16 +126,16 @@ describe('P0 — fase «Contrato» (layout definitivo)', () => {
     expect(train?.entry).toEqual(pos(0, 1));
   });
 
-  it('a cor do par trem/estação vem do tuning (§6, palette.pair)', () => {
+  it('a cor do par trem/estação vem do tuning (§6, palette.pairs[0])', () => {
     const train = P0_LEVEL.trains[0];
 
-    expect(train?.color).toBe(TUNING.palette.pair);
+    expect(train?.color).toBe(TUNING.palette.pairs[0]);
 
     const stationCell = cellAt(P0_LEVEL.board, pos(5, 1));
 
     expect(stationCell).toMatchObject({
       kind: 'fixed',
-      fixed: { kind: 'station', color: TUNING.palette.pair },
+      fixed: { kind: 'station', color: TUNING.palette.pairs[0] },
     });
   });
 

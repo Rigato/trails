@@ -27,8 +27,12 @@ export interface Palette {
   readonly background: string;
   /** Trilho e traços estruturais (grade, ícones do HUD). */
   readonly track: string;
-  /** Cor do par trem/estação do P0 (a fase traz a cor no dado; isto é o default documentado). */
-  readonly pair: string;
+  /**
+   * Cores default dos pares trem/estação por fase (P1+). A fase traz as cores
+   * no dado; `pairs[0]` substitui o antigo `palette.pair` (F-01 continua
+   * válido: o P0 lê a cor daqui).
+   */
+  readonly pairs: readonly [string, string];
   /** Opacidade da previsão sobre a cor do trem. */
   readonly predictionAlpha: number;
 }
@@ -42,6 +46,8 @@ export interface Tuning {
   readonly rotationMs: number;
   /** Sobregiro leve ao parar (leitura de direção). */
   readonly rotationOvershoot: number;
+  /** Swing da agulha do Y na troca de ponta ativa. */
+  readonly yToggleMs: number;
   /** Pausa extra entre passos drenados do buffer. */
   readonly bufferedStepGapMs: number;
   /** Teto do buffer FIFO de ações durante a animação. */
@@ -56,6 +62,8 @@ export interface Tuning {
   readonly trackWidthRatio: number;
   /** Tamanho visual da estação relativo à célula. */
   readonly stationInsetRatio: number;
+  /** Tamanho da agulha do Y relativo à célula. */
+  readonly yNeedleRatio: number;
   /** Tamanho do símbolo de forma (trem e estação) relativo à célula. */
   readonly symbolSizeRatio: number;
   /** Alvo de toque mínimo por célula, em pt CSS. */
@@ -67,6 +75,8 @@ export interface Tuning {
   /** Feedback de entrega (D5). */
   readonly deliverPulseMs: number;
   readonly deliverPulseScale: number;
+  /** Pulse na marca de vida perdida no HUD (P1/D7). */
+  readonly lifeLostPulseMs: number;
   /** Saída visual do trem descarrilado (D1). */
   readonly derailExitMs: number;
   /** Pulso contínuo na peça do primeiro giro (D6), até a primeira ação. */
@@ -84,6 +94,7 @@ export const TUNING: Tuning = {
   stepEasing: 'easeOutQuad',
   rotationMs: 110,
   rotationOvershoot: 1.08,
+  yToggleMs: 120,
   bufferedStepGapMs: 0,
   maxBufferedActions: 12,
   predictionDashMs: 1200,
@@ -91,12 +102,14 @@ export const TUNING: Tuning = {
   trainSizeRatio: 0.6,
   trackWidthRatio: 0.16,
   stationInsetRatio: 0.74,
+  yNeedleRatio: 0.38,
   symbolSizeRatio: 0.28,
   cellMinCssPt: 44,
   buttonMinCssPt: 44,
   boardMaxWidthRatio: 0.92,
   deliverPulseMs: 450,
   deliverPulseScale: 1.25,
+  lifeLostPulseMs: 350,
   derailExitMs: 300,
   firstHintPulseMs: 900,
   nullTouchFlash: 'cellFlash',
@@ -104,7 +117,7 @@ export const TUNING: Tuning = {
   palette: {
     background: '#f4f1ea',
     track: '#3a3f44',
-    pair: '#d64545',
+    pairs: ['#d64545', '#3b82f6'],
     predictionAlpha: 0.55,
   },
 };

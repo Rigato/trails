@@ -2,16 +2,24 @@
  * Tabela de movimento do core.
  *
  * Toda a geometria de trilho vive aqui. `step.ts` e `prediction.ts` não
- * conhecem as conexões de reta/curva: perguntam a `resolveCell` por onde o
- * trem sai (ou se ele para). Y (P1), cruzamento (P3) e túnel (P3) entram como
- * novos cases nesta tabela, sem mudar o motor de passo.
+ * conhecem as conexões de reta/curva/Y: perguntam a `resolveCell` por onde o
+ * trem sai (ou se ele para). Y (P1) já tem case; cruzamento e túnel (P3) entram
+ * como novos cases nesta tabela, sem mudar o motor de passo.
  *
  * Convenção (ver `types.ts`): `incoming` é a direção de deslocamento com que o
  * trem entrou na célula. As conexões de uma peça são lados; o lado de entrada
  * é `opposite(incoming)`.
  */
 
-import type { Cell, Direction, Piece, Rotation } from './types';
+import type {
+  Cell,
+  CurvePiece,
+  Direction,
+  Piece,
+  Rotation,
+  StraightPiece,
+  YPiece,
+} from './types';
 import { opposite, turnClockwise } from './types';
 
 /** Os dois lados conectados por uma peça de trilho de dois lados. */
@@ -33,20 +41,73 @@ function rotateConnections(
 }
 
 /**
- * Lados conectados por uma peça, já na orientação `piece.rot`.
+ * Lados conectados por uma reta/curva, já na orientação `piece.rot`.
  *
  * Orientação canônica (`rot: 0`): reta norte–sul; curva norte–leste. Cada
- * quarto de volta CW gira as duas conexões juntas. Y e cruzamento (P1/P3) não
- * são peças de dois lados: entram como novos cases/helpers, não como um novo
- * ramo desta função.
+ * quarto de volta CW gira as duas conexões juntas. O Y tem três lados e usa
+ * `ySides` (abaixo); cruzamento/túnel terão helpers próprios.
  */
-export function pieceConnections(piece: Piece): PieceConnections {
+export function pieceConnections(
+  piece: StraightPiece | CurvePiece,
+): PieceConnections {
   switch (piece.kind) {
     case 'straight':
       return rotateConnections(['north', 'south'], piece.rot);
     case 'curve':
       return rotateConnections(['north', 'east'], piece.rot);
   }
+}
+
+/**
+ * Os quatro lados de um Y na orientação atual.
+ *
+ * `stub` é o talo; `arm0`/`arm1` são as pontas relativas à peça (base L/O no
+ * `rot: 0`); `closed` é o lado sem saída. A tabela canônica está em `types.ts`.
+ */
+export interface YSides {
+  readonly stub: Direction;
+  readonly arm0: Direction;
+  readonly arm1: Direction;
+  readonly closed: Direction;
+}
+
+/** Gira os quatro lados do Y `piece.rot` quartos CW. */
+export function ySides(piece: YPiece): YSides {
+  let stub: Direction = 'north';
+  let arm0: Direction = 'east';
+  let arm1: Direction = 'west';
+  let closed: Direction = 'south';
+
+  for (let turn = 0; turn < piece.rot; turn += 1) {
+    stub = turnClockwise(stub);
+    arm0 = turnClockwise(arm0);
+    arm1 = turnClockwise(arm1);
+    closed = turnClockwise(closed);
+  }
+
+  return { stub, arm0, arm1, closed };
+}
+
+/**
+ * Fluxo do Y (GDD §3.2).
+ *
+ * Talo → ponta ativa; qualquer ponta (ativa ou inativa) → talo; lado fechado
+ * → `noExit`. A ponta ativa é `arm` (relativo à peça), então o giro do conjunto
+ * e a troca de braço mudam a saída sem ambiguidade.
+ */
+function moveThroughY(piece: YPiece, incoming: Direction): Direction | null {
+  const sides = ySides(piece);
+  const entrySide = opposite(incoming);
+
+  if (entrySide === sides.stub) {
+    return piece.arm === 0 ? sides.arm0 : sides.arm1;
+  }
+
+  if (entrySide === sides.arm0 || entrySide === sides.arm1) {
+    return sides.stub;
+  }
+
+  return null;
 }
 
 /**
@@ -58,7 +119,7 @@ export function pieceConnections(piece: Piece): PieceConnections {
  * naquela direção.
  */
 function moveThroughTwoSidedPiece(
-  piece: Piece,
+  piece: StraightPiece | CurvePiece,
   incoming: Direction,
 ): Direction | null {
   const connections = pieceConnections(piece);
@@ -74,10 +135,9 @@ function moveThroughTwoSidedPiece(
 /**
  * Tabela de saída por tipo de peça.
  *
- * O `switch` é deliberado: reta e curva compartilham a mesma geometria de dois
- * lados, mas Y (P1), cruzamento (P3) e túnel (P3) exigem cases próprios. Um
- * novo `PieceKind` sem case aqui (ou em `pieceConnections`) vira erro de
- * compilação, não um comportamento silencioso de curva.
+ * Reta/curva compartilham a geometria de dois lados; o Y tem fluxo próprio.
+ * Cruzamento/túnel (P3) entram como cases novos; um `PieceKind` sem case vira
+ * erro de compilação.
  */
 export function moveThroughPiece(
   piece: Piece,
@@ -87,6 +147,8 @@ export function moveThroughPiece(
     case 'straight':
     case 'curve':
       return moveThroughTwoSidedPiece(piece, incoming);
+    case 'y':
+      return moveThroughY(piece, incoming);
   }
 }
 

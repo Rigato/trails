@@ -118,20 +118,26 @@ function resolveArrival(
  * Resolve exatamente um passo.
  *
  * O `state.status` deve ser `ready` ou `playing` — `game.ts` nunca chama depois
- * do fim. O retorno tem `step + 1` e o `status` recalculado:
+ * do fim. O retorno tem `step + 1`, `lives` atualizado e o `status` recalculado:
  * - `playing` enquanto houver trem `waiting`/`running`;
  * - `won` sem trem ativo e com ao menos uma entrega (vitória dinâmica §3.7);
- * - `deadEnd` sem trem ativo e sem entrega (D1).
+ * - `deadEnd` sem trem ativo e sem entrega (D1);
+ * - `lost` quando as vidas zeram (D7), com precedência D11 sobre won/deadEnd.
  *
- * Todos os trens ativos se movem, inclusive os que vão colidir ou descarrilar.
- * A única exceção é um estado inválido (trem `running` em célula sem saída),
- * que vira `noExit` no lugar de se mover.
+ * Fase sem vidas (`state.lives === null`) não emite `lifeLost` e nunca chega a
+ * `lost`. Todos os trens ativos se movem, inclusive os que vão colidir ou
+ * descarrilar. A única exceção é um estado inválido (trem `running` em célula
+ * sem saída), que vira `noExit` no lugar de se mover.
  */
 export function resolveStep(
   state: GameState,
   options: StepOptions = {},
 ): StepResolution {
-  if (state.status === 'won' || state.status === 'deadEnd') {
+  if (
+    state.status === 'won' ||
+    state.status === 'deadEnd' ||
+    state.status === 'lost'
+  ) {
     throw new Error('resolveStep: o jogo já terminou');
   }
 
@@ -447,6 +453,33 @@ export function resolveStep(
     }
   }
 
+  // 6. Vidas: uma vida por EVENTO — cada colisão (independente do número de
+  // trens) e cada descarrilamento com reason !== 'collision'. Colisão vence o
+  // descarrilamento individual, então o duplo na mesma célula custa 1.
+  let livesLeft = state.lives;
+  const lifeLostEvents: GameEvent[] = [];
+
+  if (livesLeft !== null) {
+    let nonCollisionDerailments = 0;
+
+    for (const info of derailById.values()) {
+      if (info.reason !== 'collision') {
+        nonCollisionDerailments += 1;
+      }
+    }
+
+    const lifeLosses = collisionEvents.length + nonCollisionDerailments;
+
+    for (let loss = 0; loss < lifeLosses; loss += 1) {
+      livesLeft = Math.max(0, livesLeft - 1);
+      lifeLostEvents.push({
+        kind: 'lifeLost',
+        step: state.step + 1,
+        remaining: livesLeft,
+      });
+    }
+  }
+
   const nextTrains = state.trains.map((train): Train => {
     if (train.status.kind === 'delivered' || train.status.kind === 'derailed') {
       return train;
@@ -491,11 +524,16 @@ export function resolveStep(
     (train) => train.status.kind === 'delivered',
   );
 
-  const status: GameStatus = hasActive
-    ? 'playing'
-    : hasDelivered
-      ? 'won'
-      : 'deadEnd';
+  // D11: orçamento esgotado tem precedência sobre won/deadEnd no mesmo passo.
+  // Fase sem vidas (lives null) nunca chega a lost.
+  const status: GameStatus =
+    livesLeft !== null && livesLeft === 0
+      ? 'lost'
+      : hasActive
+        ? 'playing'
+        : hasDelivered
+          ? 'won'
+          : 'deadEnd';
 
   const endEvents: GameEvent[] = [];
 
@@ -513,12 +551,14 @@ export function resolveStep(
     ...collectionEvents,
     ...collisionEvents,
     ...derailEvents,
+    ...lifeLostEvents,
     ...endEvents,
   ];
 
   const nextState: GameState = {
     ...state,
     trains: nextTrains,
+    lives: livesLeft,
     step: state.step + 1,
     status,
   };

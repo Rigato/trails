@@ -45,6 +45,17 @@ export function curve(rot: Rotation): Cell {
   return { kind: 'piece', piece: { kind: 'curve', rot } };
 }
 
+/**
+ * Célula com Y; `arm` é relativo à peça e `next` começa em `toggle` (ABAB).
+ */
+export function y(
+  rot: Rotation,
+  arm: 0 | 1,
+  next: 'toggle' | 'rotate' = 'toggle',
+): Cell {
+  return { kind: 'piece', piece: { kind: 'y', rot, arm, next } };
+}
+
 /** Célula de estação. */
 export function station(color: Color = RED, shape: Shape = 'circle'): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
@@ -78,13 +89,14 @@ export function trainSetup(
   return { id, color, shape, entry: entryCell };
 }
 
-/** Monta uma fase de teste. */
+/** Monta uma fase de teste; `lives` ausente preserva D1. */
 export function makeLevel(
   id: string,
   cells: Board,
   trains: readonly TrainSetup[],
+  lives?: number,
 ): LevelLayout {
-  return { id, name: id, board: cells, trains };
+  return { id, name: id, board: cells, trains, lives };
 }
 
 /** Cria a fachada do jogo para um layout válido. */
@@ -130,8 +142,9 @@ export function gameState(
   trains: readonly Train[],
   step = 0,
   status: GameStatus = 'playing',
+  lives: number | null = null,
 ): GameState {
-  return { levelId: 'test', board: cells, trains, step, status };
+  return { levelId: 'test', board: cells, trains, lives, step, status };
 }
 
 /** Tipos de evento em ordem, para asserts de sequência. */
@@ -145,6 +158,8 @@ export type TrainMovedEvent = Extract<GameEvent, { kind: 'trainMoved' }>;
 export type TrainDeliveredEvent = Extract<GameEvent, { kind: 'trainDelivered' }>;
 export type TrainDerailedEvent = Extract<GameEvent, { kind: 'trainDerailed' }>;
 export type CollisionEvent = Extract<GameEvent, { kind: 'collision' }>;
+export type PieceToggledEvent = Extract<GameEvent, { kind: 'pieceToggled' }>;
+export type LifeLostEvent = Extract<GameEvent, { kind: 'lifeLost' }>;
 
 export function movementsOf(
   events: readonly GameEvent[],
@@ -177,5 +192,21 @@ export function collisionsOf(
 ): readonly CollisionEvent[] {
   return events.filter(
     (event): event is CollisionEvent => event.kind === 'collision',
+  );
+}
+
+export function togglesOf(
+  events: readonly GameEvent[],
+): readonly PieceToggledEvent[] {
+  return events.filter(
+    (event): event is PieceToggledEvent => event.kind === 'pieceToggled',
+  );
+}
+
+export function lifeLossesOf(
+  events: readonly GameEvent[],
+): readonly LifeLostEvent[] {
+  return events.filter(
+    (event): event is LifeLostEvent => event.kind === 'lifeLost',
   );
 }
