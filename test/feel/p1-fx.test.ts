@@ -8,6 +8,7 @@ import {
   lifePulseProgress,
   lifePulseRing,
   lifePulseScale,
+  yArmMix,
   yNeedleSweepAngle,
 } from '../../src/render/fx';
 import {
@@ -73,45 +74,48 @@ describe('tuning do P1 — parâmetros vivos (E8)', () => {
   });
 });
 
-describe('seta do Y — varredura do toggle (E8, revisão pós-playtest)', () => {
-  it('começa no braço antigo e termina no novo', () => {
+describe('Y — conexão com crossfade (D12-v2)', () => {
+  it('yNeedleSweepAngle codifica o progresso como ângulo 0..π', () => {
     expect(yNeedleSweepAngle(0, 1, 0)).toBe(0);
     expect(yNeedleSweepAngle(0, 1, 1)).toBeCloseTo(Math.PI);
     expect(yNeedleSweepAngle(1, 0, 0)).toBeCloseTo(Math.PI);
-    expect(yNeedleSweepAngle(1, 0, 1)).toBeCloseTo(0);
+    expect(yNeedleSweepAngle(1, 0, 1)).toBe(0);
   });
 
-  it('varre pelo lado FECHADO (π/2 local), sem tocar no talo nem passar do alvo', () => {
-    let sawClosedSide = false;
-    let min = Infinity;
-    let max = -Infinity;
+  it('0→1 começa no braço 0, termina no braço 1 e nunca volta', () => {
+    let previous = -Infinity;
 
     for (let sample = 0; sample <= 200; sample += 1) {
-      const angle = yNeedleSweepAngle(0, 1, sample / 200);
-      min = Math.min(min, angle);
-      max = Math.max(max, angle);
-
-      if (Math.abs(angle - Math.PI / 2) < 0.01) {
-        sawClosedSide = true;
-      }
+      const mix = yArmMix(1, yNeedleSweepAngle(0, 1, sample / 200));
+      expect(mix).toBeGreaterThanOrEqual(previous);
+      previous = mix;
     }
 
-    expect(sawClosedSide).toBe(true);
-    expect(min).toBeGreaterThanOrEqual(0);
-    expect(max).toBeLessThanOrEqual(Math.PI + 1e-12);
+    expect(yArmMix(1, yNeedleSweepAngle(0, 1, 0))).toBe(0);
+    expect(yArmMix(1, yNeedleSweepAngle(0, 1, 1))).toBeCloseTo(1);
   });
 
-  it('é curto e seco: no meio do tempo já passou do lado fechado', () => {
-    // easeOutQuad: em t = 0,5 o ângulo já está em 0,75π (0→1), não em π/2.
-    expect(yNeedleSweepAngle(0, 1, 0.5)).toBeGreaterThan(Math.PI / 2);
-    expect(yNeedleSweepAngle(1, 0, 0.5)).toBeLessThan(Math.PI / 2);
+  it('1→0 começa no braço 1, termina no braço 0 e nunca volta', () => {
+    let previous = Infinity;
+
+    for (let sample = 0; sample <= 200; sample += 1) {
+      const mix = yArmMix(0, yNeedleSweepAngle(1, 0, sample / 200));
+      expect(mix).toBeLessThanOrEqual(previous);
+      previous = mix;
+    }
+
+    expect(yArmMix(0, yNeedleSweepAngle(1, 0, 0))).toBeCloseTo(1);
+    expect(yArmMix(0, yNeedleSweepAngle(1, 0, 1))).toBe(0);
   });
 
-  it('clampa e não anima quando o braço não muda', () => {
-    expect(yNeedleSweepAngle(0, 1, -1)).toBe(0);
-    expect(yNeedleSweepAngle(0, 1, 2)).toBeCloseTo(Math.PI);
-    expect(yNeedleSweepAngle(0, 0, 0.4)).toBe(0);
-    expect(yNeedleSweepAngle(1, 1, 0.4)).toBeCloseTo(Math.PI);
+  it('em repouso não anima; clampa e não anima quando o braço não muda', () => {
+    expect(yArmMix(0)).toBe(0);
+    expect(yArmMix(1)).toBe(1);
+    expect(yArmMix(1, -Math.PI)).toBe(0);
+    expect(yArmMix(1, 2 * Math.PI)).toBe(1);
+    expect(yArmMix(0, 2 * Math.PI)).toBe(1);
+    expect(yArmMix(0, yNeedleSweepAngle(0, 0, 0.4))).toBe(0);
+    expect(yArmMix(1, yNeedleSweepAngle(1, 1, 0.4))).toBe(1);
   });
 });
 

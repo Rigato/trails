@@ -305,15 +305,14 @@ export function rotationProgress(t: number, overshoot: number): number {
 }
 
 /**
- * Ângulo LOCAL do canal ativo do Y durante um toggle, em [0, π].
+ * Ângulo de progresso do toggle do Y, em [0, π] (E8; D12-v2).
  *
- * 0 = braço 0 (leste canônico), π = braço 1 (oeste canônico). A varredura
- * escolhida passa pelo lado FECHADO (local +π/2): a seta e o realce cruzam o
- * vazio em vez de varrer por cima do talo, então nunca parece que o tronco
- * virou a rota ativa. `easeOutQuad` — o toggle é curto e seco, sem o sobregiro
- * do giro da peça. O passo de 180 ms continua; a seta termina em `yToggleMs`
- * (120). O nome `yNeedleSweepAngle` fica por compatibilidade com a costura do
- * E8; a indicação desenhada é a seta da rota + canal ativo.
+ * O nome é herdado da costura do E8 e permanece porque `main.ts` o consome. O
+ * valor NÃO é mais um ângulo espacial de varredura: ele só codifica o
+ * progresso do toggle (0 = braço antigo, π = novo) para `yArmMix`, que faz o
+ * crossfade dos braços. 0 = braço 0 (leste canônico), π = braço 1 (oeste).
+ * `easeOutQuad` — o toggle é curto e seco, sem o sobregiro do giro da peça. O
+ * passo de 180 ms continua; a troca termina em `yToggleMs` (120).
  */
 export function yNeedleSweepAngle(
   fromArm: 0 | 1,
@@ -329,6 +328,22 @@ export function yNeedleSweepAngle(
   const eased = easeOutQuad(clamp01(progress));
 
   return start === 0 ? Math.PI * eased : Math.PI * (1 - eased);
+}
+
+/**
+ * Mistura do crossfade dos braços do Y, em [0, 1] (D12-v2).
+ *
+ * `arm` é o braço ativo do snapshot, usado em repouso. Durante o toggle,
+ * `toggleAngleRad` (o valor de `yNeedleSweepAngle`) já codifica a mistura:
+ * 0 = braço 0 ativo (leste), π = braço 1 ativo (oeste), qualquer que seja o
+ * sentido da troca. Sem toggle, a mistura é o próprio braço do snapshot.
+ */
+export function yArmMix(arm: 0 | 1, toggleAngleRad?: number): number {
+  if (toggleAngleRad === undefined || !Number.isFinite(toggleAngleRad)) {
+    return arm;
+  }
+
+  return clamp01(toggleAngleRad / Math.PI);
 }
 
 /** Intensidade do flash (1 no toque, 0 no fim); curva quadrática discreta. */

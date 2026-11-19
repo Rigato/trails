@@ -60,6 +60,11 @@ export interface Tuning {
   readonly maxBufferedActions: number;
   /** Período da «marcha» dos pontinhos da previsão. */
   readonly predictionDashMs: number;
+  /**
+   * Horizonte visível da previsão em células — D21; o core calcula o caminho
+   * inteiro, o render trunca e esmaece no corte.
+   */
+  readonly predictionVisibleSteps: number;
   /** Teto de células simuladas pela previsão antes de parar por segurança. */
   readonly predictionSafetyCapSteps: number;
   /** Corpo do trem relativo à célula. */
@@ -80,7 +85,11 @@ export interface Tuning {
   readonly cellMinCssPt: number;
   /** Alvo mínimo dos botões do HUD, em pt CSS. */
   readonly buttonMinCssPt: number;
-  /** Folga da grade na viewport (fração da largura). */
+  /**
+   * Folga lateral da grade na viewport (fração da largura). `0.80` (V-4,
+   * 19/11/2026) reserva margem para o trem `waiting` aparecer fora da grade
+   * nas entradas laterais; o piso `cellMinCssPt` protege o alvo de 44 pt.
+   */
   readonly boardMaxWidthRatio: number;
   /** Feedback de entrega (D5). */
   readonly deliverPulseMs: number;
@@ -108,6 +117,7 @@ export const TUNING: Tuning = {
   bufferedStepGapMs: 0,
   maxBufferedActions: 12,
   predictionDashMs: 1200,
+  predictionVisibleSteps: 6,
   predictionSafetyCapSteps: 24,
   trainSizeRatio: 0.6,
   trackWidthRatio: 0.16,
@@ -118,7 +128,7 @@ export const TUNING: Tuning = {
   symbolSizeRatio: 0.28,
   cellMinCssPt: 44,
   buttonMinCssPt: 44,
-  boardMaxWidthRatio: 0.92,
+  boardMaxWidthRatio: 0.8,
   deliverPulseMs: 450,
   deliverPulseScale: 1.25,
   lifeLostPulseMs: 350,

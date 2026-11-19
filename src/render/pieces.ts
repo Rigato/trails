@@ -10,24 +10,33 @@
  * desenhada num ângulo contínuo (fora dos múltiplos de 90°) sem que a regra
  * saiba da animação.
  *
- * Y (pós-playtest): três stubs + **seta da rota** do talo (na borda) ao centro
- * e à ponta ativa, + **realce claro do canal ativo**. O lado fechado não tem
- * trilho. D9: `next` não é desenhado — a indicação mostra só o estado atual,
- * nunca a próxima ação ABAB.
+ * Y (D12-v2, revisão pós-playtest): semântica de CONEXÃO, como um desvio
+ * ferroviário físico. O talo + a ponta ativa são UM trilho contínuo em negrito
+ * (×1,15); a ponta inativa continua trilho, só esmaecido (×0,7 e alpha 60%) —
+ * ela aceita entrada e não pode parecer quebrada. Nada aponta direção: trilho
+ * é bidirecional, então uma seta sempre contradiz metade dos fluxos. O lado
+ * fechado fica vazio; o pino fecha a junção. D9: `next` não é desenhado — a
+ * indicação mostra só o estado atual, nunca a próxima ação ABAB.
  *
- * A seta e o realce são desenhados no MESMO `drawPiece`; no giro do Y eles
- * giram com a peça (`angle`). No toque-toggle, os stubs ficam parados e só o
- * ângulo local do canal (`needleAngleRad`) varre do braço antigo ao novo, pelo
- * lado fechado (`yNeedleSweepAngle` em `fx.ts`).
+ * O Y é desenhado no MESMO `drawPiece`; no giro ele gira com a peça (`angle`).
+ * No toque-toggle, os braços trocam de peso em CROSSFADE (`yArmMix` em
+ * `fx.ts`), sem varredura espacial — a varredura pertencia à metáfora
+ * direcional, que morreu com a seta.
  */
 
 import type { Piece, YPiece } from '../core/types';
 import { TUNING } from '../config/tuning';
+import { yArmMix } from './fx';
 
 /** Espessura mínima do trilho em px CSS (legibilidade em DPR 1). */
 const MIN_TRACK_WIDTH = 2;
-/** Contorno mínimo do traço/da seta em px CSS. */
-const MIN_ROUTE_OUTLINE = 1.5;
+
+/** Braço conectado: um pouco mais grosso que o trilho comum (D12-v2). */
+const Y_ACTIVE_WIDTH = 1.15;
+/** Braço secundário: mais fino, mas comprimento integral — ainda é trilho. */
+const Y_INACTIVE_WIDTH = 0.7;
+/** Opacidade do braço secundário; legível sobre o fundo sem virar «quebrado». */
+const Y_INACTIVE_ALPHA = 0.6;
 
 /**
  * Constrói o traçado canônico de uma peça no contexto atual, sem espessura nem
@@ -79,10 +88,11 @@ export function tracePiecePath(
  *
  * Reta: traço dos dois lados opostos (N–S canônico). Curva: arco de um quarto
  * de volta que encosta no canto entre os dois lados conectados (N–E canônico).
- * Y: três stubs + seta da rota + realce do canal ativo; o lado fechado fica
- * vazio. `angleRad` permite o giro animado do E3. `needleAngleRad` é o ângulo
- * LOCAL do canal ativo (0 = braço 0/leste canônico, π = braço 1/oeste
- * canônico): no toggle, a seta e o realce varrem por ele sem girar os stubs.
+ * Y: talo + braço ativo em um trilho contínuo negrito, o outro braço esmaecido
+ * e o lado fechado vazio (D12-v2). `angleRad` permite o giro animado do E3.
+ * `toggleAngleRad` é o ângulo de progresso do toggle (0..π codifica a mistura
+ * dos braços, via `yArmMix`); no toggle, os braços fazem crossfade sem girar
+ * os stubs.
  */
 export function drawPiece(
   ctx: CanvasRenderingContext2D,
@@ -92,10 +102,15 @@ export function drawPiece(
   cell: number,
   color: string,
   angleRad?: number,
-  needleAngleRad?: number,
+  toggleAngleRad?: number,
 ): void {
   const lineWidth = Math.max(MIN_TRACK_WIDTH, cell * TUNING.trackWidthRatio);
   const angle = angleRad ?? (piece.rot * Math.PI) / 2;
+
+  if (piece.kind === 'y') {
+    drawYConnection(ctx, piece, x, y, cell, color, lineWidth, angle, toggleAngleRad);
+    return;
+  }
 
   ctx.save();
   tracePiecePath(ctx, piece, x, y, cell, angle);
@@ -105,40 +120,24 @@ export function drawPiece(
   ctx.lineJoin = 'round';
   ctx.stroke();
   ctx.restore();
-
-  if (piece.kind === 'y') {
-    drawYRoute(ctx, piece, x, y, cell, color, lineWidth, angle, needleAngleRad);
-  }
 }
 
 /**
- * Seta da rota + realce do canal ativo (substitui a cunha do E7/E8).
+ * Y como desvio físico (D12-v2).
  *
- * **Leitura:** uma linha clara fina sai do TALO (na borda da célula), passa
- * pelo pino central e vira o canal ativo; o canal é um stub claro e mais
- * grosso, com bordas escuras, que termina numa PONTA DE SETA clara contornada
- * de trilho na ponta ativa. Assim «quem vem do talo vai por aqui» se lê pela
- * rota, e o canal ligado se lê pela largura/claridade (redundância). O talo e
- * a ponta inativa continuam no traço normal; o lado fechado não tem trilho.
- * D9: nada indica a próxima ação ABAB.
+ * **Leitura:** o talo e o braço ativo formam um L contínuo em negrito — «a
+ * linha ligada». O outro braço mantém o comprimento inteiro e a cor do trilho,
+ * só mais fino e translúcido: lê como trilho secundário, não como quebrado
+ * (ele aceita entrada). O lado fechado não é desenhado. Não há seta, cunha ou
+ * triângulo: nada aponta contra o fluxo de quem entra por uma ponta e sai pelo
+ * talo (trilho é bidirecional).
  *
- * **Varredura:** `needleAngleRad` é local (0 = braço 0/leste, π = braço 1/
- * oeste). A passagem pelo lado FECHADO (local +π/2) evita varrer por cima do
- * talo. A linha do talo é fixa; o canal e a ponta giram com o ângulo local. No
- * giro do Y, `angle` gira o conjunto.
- *
- * **Tamanho sem parâmetro novo:** `yNeedleRatio` (0,38) dimensiona a PONTA —
- * comprimento 0,78× e meia-largura 0,46×. O canal usa a espessura do trilho; a
- * linha do talo e o contorno são constantes locais. O valor antigo da cunha
- * (0,38) é assim reaproveitado como driver da seta.
- *
- * Cores: a linha, o canal e o miolo da ponta usam a cor de fundo; o contorno
- * do canal e da ponta usa a cor do trilho. O canal tem bordas escuras para não
- * sumir no fundo creme; a ponta contornada também lê sobre o branco da
- * previsão (V-1), onde só o contorno escuro sobrevive. O pino escuro fecha a
- * junção.
+ * **Crossfade:** `mix` 0..1 vem de `yArmMix`; 0 = braço leste ativo, 1 = oeste.
+ * Cada braço interpola largura e alpha entre esmaecido e negrito, então o
+ * toggle troca o destaque sem varredura espacial. O talo é sempre negrito (é o
+ * tronco comum aos dois settings). O pino fecha o cotovelo e a junção.
  */
-function drawYRoute(
+function drawYConnection(
   ctx: CanvasRenderingContext2D,
   piece: YPiece,
   x: number,
@@ -147,74 +146,44 @@ function drawYRoute(
   color: string,
   trackWidth: number,
   angle: number,
-  needleAngleRad?: number,
+  toggleAngleRad?: number,
 ): void {
   const half = cell / 2;
-  const localAngle = needleAngleRad ?? (piece.arm === 0 ? 0 : Math.PI);
-  const background = TUNING.palette.background;
-
-  // Ponta: yNeedleRatio conduz o tamanho (reaproveitamento documentado).
-  const tipRadius = half - cell * 0.035;
-  const headLength = cell * TUNING.yNeedleRatio * 0.78;
-  const headHalfWidth = cell * TUNING.yNeedleRatio * 0.46;
-  const baseRadius = Math.max(0, tipRadius - headLength);
-
-  const outline = Math.max(MIN_ROUTE_OUTLINE, cell * 0.034);
-  const routeWidth = Math.max(MIN_TRACK_WIDTH * 0.75, trackWidth * 0.28);
-  // Canal ativo: mais grosso que o trilho, claro, com borda escura.
-  const channelOuter = Math.max(trackWidth, trackWidth * 1.85);
-  const channelInner = Math.max(trackWidth * 0.6, trackWidth * 1.42);
+  const mix = yArmMix(piece.arm, toggleAngleRad);
+  const weights = [1 - mix, mix];
+  const activeWidth = trackWidth * Y_ACTIVE_WIDTH;
 
   ctx.save();
   ctx.translate(x + half, y + half);
   ctx.rotate(angle);
-
-  // 1. Canal ativo: borda escura + miolo claro, do pino à base da ponta.
-  ctx.save();
-  ctx.rotate(localAngle);
   ctx.lineCap = 'butt';
-
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(baseRadius, 0);
   ctx.strokeStyle = color;
-  ctx.lineWidth = channelOuter;
-  ctx.stroke();
 
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(baseRadius, 0);
-  ctx.strokeStyle = background;
-  ctx.lineWidth = channelInner;
-  ctx.stroke();
+  // Braços: cada um interpola entre esmaecido e negrito no crossfade.
+  for (let arm = 0; arm < 2; arm += 1) {
+    const weight = weights[arm] ?? 0;
+    const end = arm === 0 ? half : -half;
 
-  // 2. Ponta de seta clara, contornada de trilho, na ponta ativa.
-  ctx.beginPath();
-  ctx.moveTo(tipRadius, 0);
-  ctx.lineTo(baseRadius, -headHalfWidth);
-  ctx.lineTo(baseRadius, headHalfWidth);
-  ctx.closePath();
-  ctx.fillStyle = background;
-  ctx.fill();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = outline;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  ctx.restore();
+    ctx.globalAlpha = Y_INACTIVE_ALPHA + (1 - Y_INACTIVE_ALPHA) * weight;
+    ctx.lineWidth =
+      trackWidth * (Y_INACTIVE_WIDTH + (Y_ACTIVE_WIDTH - Y_INACTIVE_WIDTH) * weight);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(end, 0);
+    ctx.stroke();
+  }
 
-  // 3. Linha da rota no talo (borda ao pino), fina e clara.
-  const routeStart = -half + routeWidth / 2;
+  // Talo: sempre negrito; é o tronco comum aos dois settings.
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = activeWidth;
   ctx.beginPath();
-  ctx.moveTo(0, routeStart);
+  ctx.moveTo(0, -half);
   ctx.lineTo(0, 0);
-  ctx.strokeStyle = background;
-  ctx.lineWidth = routeWidth;
-  ctx.lineCap = 'round';
   ctx.stroke();
 
-  // 4. Pino central: cobre a junção dos stubs, o início do canal e o pivô.
+  // Pino: fecha o cotovelo do L e a junção dos três stubs.
   ctx.beginPath();
-  ctx.arc(0, 0, trackWidth * 0.46, 0, Math.PI * 2);
+  ctx.arc(0, 0, activeWidth / 2, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
 

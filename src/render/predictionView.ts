@@ -10,12 +10,15 @@
  *
  * A parada tem aparência própria: anel na estação certa, X no canto superior
  * direito da estação errada (fora do símbolo do par), seta na borda, sinal de
- * proibido em célula sem saída e anel com marcador no loop (D2).
+ * proibido em célula sem saída, gota na água e anel com marcador no loop (D2).
  *
- * V-1: o traço colorido ganha um canal claro (cor de fundo) por baixo, largo o
- * bastante para o dash respirar sobre o trilho escuro. O canal é desenhado em
- * um passe separado para TODAS as previsões antes de qualquer traço colorido —
- * assim a segunda rota não apaga a primeira no corredor compartilhado.
+ * V-1/E10: o traço colorido tem um canal claro por baixo, mas o trilho manda:
+ * o canal fica DENTRO da largura do trilho e com alpha, então as bordas escuras
+ * continuam emoldurando a rota (nunca uma «estrada branca»).
+ *
+ * D21: o horizonte visível é `predictionVisibleSteps` células. O core calcula o
+ * caminho inteiro; aqui ele é truncado e as últimas células esmaecem no corte.
+ * O marcador de parada só aparece se a parada estiver dentro da janela.
  */
 
 import type {
@@ -47,8 +50,10 @@ const DASH_LENGTH_RATIO = 0.07;
 const DASH_GAP_RATIO = 0.13;
 /** Largura do traço colorido como fração da célula. */
 const DASH_WIDTH_RATIO = 0.07;
-/** Extensão do canal claro sob o dash, em fração da célula (V-1). */
-const UNDERLAY_EXTRA_RATIO = 0.12;
+/** Canal claro dentro da largura do trilho (75–90%); nunca cobre as bordas. */
+const UNDERLAY_TRACK_RATIO = 0.75;
+/** Alpha do canal: pista suave, o trilho continua visível por baixo. */
+const UNDERLAY_ALPHA = 0.6;
 
 interface Point {
   readonly x: number;
@@ -125,7 +130,96 @@ function dashOffset(cellSize: number, now: number, cycle: number): number {
 }
 
 /**
- * Constrói o caminho único da previsão no contexto corrente.
+ * Horizonte visível da previsão (D21): o path é truncado em
+ * `predictionVisibleSteps` células; `beyondNext` é a primeira célula fora da
+ * janela, usada só para achar a borda de saída e desenhar o fade.
+ */
+interface VisibleRoute {
+  readonly path: readonly CellPos[];
+  readonly capped: boolean;
+  readonly beyondNext: CellPos | undefined;
+}
+
+function visibleRoute(prediction: Prediction): VisibleRoute {
+  const limit = Math.max(1, Math.floor(TUNING.predictionVisibleSteps));
+
+  if (prediction.path.length <= limit) {
+    return { path: prediction.path, capped: false, beyondNext: undefined };
+  }
+
+  return {
+    path: prediction.path.slice(0, limit),
+    capped: true,
+    beyondNext: prediction.path[limit],
+  };
+}
+
+/** Cor hex com alpha explícito, para o gradiente de fade terminar transparente. */
+function colorWithAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+
+  if (match === null) {
+    return color;
+  }
+
+  const value = match[1];
+
+  if (value === undefined) {
+    return color;
+  }
+
+  const r = Number.parseInt(value.slice(0, 2), 16);
+  const g = Number.parseInt(value.slice(2, 4), 16);
+  const b = Number.parseInt(value.slice(4, 6), 16);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * Gradiente do corte: a partir do centro da penúltima célula visível até a
+ * borda de saída da última, a cor esmaece até transparente. Aplicado ao mesmo
+ * path, antes do corte a cor continua plena; no fim, o traço «continua por aí»
+ * sem linha dura.
+ */
+function routeFade(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  route: VisibleRoute,
+  color: string,
+): CanvasGradient | null {
+  if (!route.capped || route.path.length === 0 || route.beyondNext === undefined) {
+    return null;
+  }
+
+  const last = route.path[route.path.length - 1];
+  const previous = route.path[Math.max(0, route.path.length - 2)];
+
+  if (last === undefined || previous === undefined) {
+    return null;
+  }
+
+  const start = cellCenter(layout, previous);
+  const lastCenter = cellCenter(layout, last);
+  const nextCenter = cellCenter(layout, route.beyondNext);
+  const end = {
+    x: (lastCenter.x + nextCenter.x) / 2,
+    y: (lastCenter.y + nextCenter.y) / 2,
+  };
+
+  if (Math.abs(end.x - start.x) < 0.01 && Math.abs(end.y - start.y) < 0.01) {
+    return null;
+  }
+
+  const gradient = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+  gradient.addColorStop(0, colorWithAlpha(color, 1));
+  gradient.addColorStop(1, colorWithAlpha(color, 0));
+
+  return gradient;
+}
+
+/**
+ * Constrói o caminho único da previsão no contexto corrente, já truncado pelo
+ * horizonte visível.
  *
  * Cada célula contribui com o trecho que o trem percorreria: a peça inteira
  * (reta ou arco), a ligação entre bordas de uma célula sem peça, ou o trecho
@@ -137,8 +231,9 @@ function tracePredictionRoute(
   layout: SceneLayout,
   board: Board,
   prediction: Prediction,
+  route: VisibleRoute,
 ): void {
-  const { path } = prediction;
+  const { path, capped, beyondNext } = route;
   const lastIndex = path.length - 1;
 
   if (lastIndex < 0) {
@@ -177,7 +272,12 @@ function tracePredictionRoute(
     const content = cellAt(board, cell);
     const center = cellCenter(layout, cell);
     const previous = index > 0 ? path[index - 1] : undefined;
-    const next = index < lastIndex ? path[index + 1] : undefined;
+    const next =
+      index < lastIndex
+        ? path[index + 1]
+        : capped && index === lastIndex
+          ? beyondNext
+          : undefined;
     const entrySide = previous ? directionBetween(cell, previous) : undefined;
     const exitSide = next ? directionBetween(cell, next) : undefined;
 
@@ -228,7 +328,7 @@ function tracePredictionRoute(
         exitSide ?? (entry === sides[0] ? sides[1] : sides[0]);
 
       // Rota que morre dentro da peça: só o trecho da entrada até o centro.
-      if (!next && prediction.stop.kind === 'noExit') {
+      if (!capped && !next && prediction.stop.kind === 'noExit') {
         if (previous !== undefined) {
           const entryPoint = edgePoint(center, entry, half);
           place(entryPoint);
@@ -295,12 +395,12 @@ function tracePredictionRoute(
 }
 
 /**
- * Canal claro sob a rota de uma previsão (V-1).
+ * Canal claro sob a rota de uma previsão (V-1 revisto).
  *
- * O traço colorido a 55% sobre o trilho escuro (#3a3f44) perde contraste; este
- * passe pinta o MESMO caminho com a cor de fundo e uma largura moderada
- * (`dash + 0,12 célula`), criando um corredor claro sem tocar nas peças fora da
- * rota. O chamador desenha todos os canais antes dos traços coloridos.
+ * O canal fica DENTRO da espessura do trilho (75%) e com alpha 0,6: o miolo
+ * ganha contraste para o dash, mas as bordas escuras do trilho continuam
+ * visíveis emoldurando a pista. O horizonte D21 corta e esmaece o canal junto
+ * com o traço colorido.
  */
 export function drawPredictionUnderlay(
   ctx: CanvasRenderingContext2D,
@@ -308,21 +408,29 @@ export function drawPredictionUnderlay(
   board: Board,
   prediction: Prediction,
 ): void {
-  if (prediction.path.length === 0 || layout.cell <= 0) {
+  const route = visibleRoute(prediction);
+
+  if (route.path.length === 0 || layout.cell <= 0) {
     return;
   }
 
   const dashWidth = Math.max(MIN_STROKE, layout.cell * DASH_WIDTH_RATIO);
+  const trackWidth = Math.max(
+    MIN_STROKE,
+    layout.cell * TUNING.trackWidthRatio,
+  );
+  const channelWidth = Math.max(dashWidth, trackWidth * UNDERLAY_TRACK_RATIO);
+  const fade = routeFade(ctx, layout, route, PALETTE.background);
 
   ctx.save();
-  ctx.strokeStyle = PALETTE.background;
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = dashWidth + layout.cell * UNDERLAY_EXTRA_RATIO;
+  ctx.strokeStyle = fade ?? PALETTE.background;
+  ctx.globalAlpha = UNDERLAY_ALPHA;
+  ctx.lineWidth = channelWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.setLineDash([]);
   ctx.beginPath();
-  tracePredictionRoute(ctx, layout, board, prediction);
+  tracePredictionRoute(ctx, layout, board, prediction, route);
   ctx.stroke();
   ctx.restore();
 }
@@ -335,6 +443,10 @@ export function drawPredictionUnderlay(
  * alterna o padrão (0 = pontos redondos, 1 = traços curtos) para dois trens
  * simultâneos não serem confundidos só pela cor. O canal claro (V-1) é um
  * passe separado, desenhado antes de todos os traços.
+ *
+ * D21: só as primeiras `predictionVisibleSteps` células são desenhadas; o
+ * corte esmaece. O marcador de parada só aparece se a parada estiver dentro
+ * da janela.
  */
 export function drawPrediction(
   ctx: CanvasRenderingContext2D,
@@ -345,9 +457,8 @@ export function drawPrediction(
   now: number,
   variant = 0,
 ): void {
-  const path = prediction.path;
-  const lastIndex = path.length - 1;
-  const lastCell = path[lastIndex];
+  const route = visibleRoute(prediction);
+  const lastCell = route.path[route.path.length - 1];
 
   if (!lastCell || layout.cell <= 0) {
     return;
@@ -357,9 +468,10 @@ export function drawPrediction(
   const dashLength =
     variant % 2 === 0 ? DOT_LENGTH : Math.max(1, cellSize * DASH_LENGTH_RATIO);
   const dashGap = cellSize * (variant % 2 === 0 ? DOT_GAP_RATIO : DASH_GAP_RATIO);
+  const fade = routeFade(ctx, layout, route, color);
 
   ctx.save();
-  ctx.strokeStyle = color;
+  ctx.strokeStyle = fade ?? color;
   ctx.fillStyle = color;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
@@ -371,13 +483,16 @@ export function drawPrediction(
   ctx.lineDashOffset = dashOffset(cellSize, now, dashLength + dashGap);
 
   ctx.beginPath();
-  tracePredictionRoute(ctx, layout, board, prediction);
+  tracePredictionRoute(ctx, layout, board, prediction, route);
   ctx.stroke();
 
   ctx.setLineDash([]);
   ctx.lineDashOffset = 0;
   ctx.globalAlpha = STOP_ALPHA;
-  drawStopMarker(ctx, layout, prediction, color);
+
+  if (!route.capped) {
+    drawStopMarker(ctx, layout, prediction, color);
+  }
 
   ctx.restore();
 }

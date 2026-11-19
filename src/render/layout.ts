@@ -79,7 +79,8 @@ export function computeLayout(width: number, height: number, board: Board): Scen
   );
 
   // `cellMinCssPt` é alvo de toque: quando a tela comporta, a célula não fica
-  // abaixo dele nem por arredondamento (o shell 907×510 cai em 43,99 sem isto).
+  // abaixo dele. Em shells estreitos (907×510, 320×568) o piso assume e a
+  // margem lateral fica no mínimo que a largura permite.
   const minCell = TUNING.cellMinCssPt;
 
   if (
