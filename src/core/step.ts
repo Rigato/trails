@@ -101,6 +101,18 @@ function resolveArrival(
       : { kind: 'derailed', reason: 'wrongStation' };
   }
 
+  if (destination.kind === 'fixed' && destination.fixed.kind === 'river') {
+    return { kind: 'derailed', reason: 'water' };
+  }
+
+  if (destination.kind === 'fixed' && destination.fixed.kind === 'bridge') {
+    const exit = resolveCell(destination, direction);
+
+    return exit.kind === 'exit'
+      ? { kind: 'running' }
+      : { kind: 'derailed', reason: 'noExit' };
+  }
+
   if (destination.kind === 'piece') {
     const exit = resolveCell(destination, direction);
 
@@ -186,6 +198,15 @@ export function resolveStep(
         at: status.cell,
         direction: status.incoming,
         reason: 'noExit',
+      });
+      continue;
+    }
+
+    if (exit.kind === 'water') {
+      derailById.set(train.id, {
+        at: status.cell,
+        direction: status.incoming,
+        reason: 'water',
       });
       continue;
     }

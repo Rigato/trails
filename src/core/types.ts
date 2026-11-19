@@ -169,13 +169,37 @@ export interface EntryPoint {
 }
 
 /**
+ * Rio: célula de água de uma banda reta.
+ *
+ * Não recebe trilho. Um trem que chega a uma célula de rio descarrila com
+ * `reason: 'water'`; a previsão para na água com `stop.kind: 'water'`, distinta
+ * de `noExit`. A banda (linha ou coluna contígua) e sua única ponte são
+ * validadas no setup.
+ */
+export interface River {
+  readonly kind: 'river';
+}
+
+/**
+ * Ponte: célula fixa de travessia dentro da banda de rio.
+ *
+ * `axis` é o eixo do trilho da ponte (a direção em que o trem atravessa) e é
+ * **perpendicular** ao eixo do rio. Quem entra pela ponte viajando ao longo do
+ * eixo atravessa; entrada de lado não conecta (`noExit`). A ponte não gira e
+ * comporta um trem por vez (regra geral de colisão).
+ */
+export interface Bridge {
+  readonly kind: 'bridge';
+  readonly axis: 'east-west' | 'north-south';
+}
+
+/**
  * Elemento fixo de uma célula.
  *
- * Hoje só a estação. Rio, ponte, túnel e montanha (P2/P3) entram como novas
- * variantes desta união, com case novo em `movement.ts`/`step.ts` e no render —
- * sem mexer no formato das células existentes.
+ * Hoje: estação, rio e ponte. Futuros elementos (montanha etc.) entram como
+ * novas variantes, com case novo em `movement.ts`/`step.ts` e no render.
  */
-export type Fixed = Station;
+export type Fixed = Station | River | Bridge;
 
 /** Célula vazia: nada transponível; trem que chega descarrila. */
 export interface EmptyCell {
@@ -188,7 +212,7 @@ export interface PieceCell {
   readonly piece: Piece;
 }
 
-/** Célula com elemento fixo (hoje estação; futuros rio/túnel...). */
+/** Célula com elemento fixo (estação, rio, ponte ou futuro fixo). */
 export interface FixedCell {
   readonly kind: 'fixed';
   readonly fixed: Fixed;
@@ -226,11 +250,18 @@ export type TrainId = string;
  * - `offBoard`: saiu da grade por uma borda;
  * - `noExit`: chegou a uma célula sem saída (vazia ou peça sem conexão para a
  *   direção de entrada);
+ * - `water`: entrou em uma célula de rio (água); a ponte acessada fora do
+ *   eixo é `noExit` (a ponte só conecta ao longo do eixo);
  * - `wrongStation`: chegou a uma estação de cor diferente da sua;
  * - `collision`: colisão com outra locomotiva (mesma célula no mesmo passo ou
  *   troca de células no mesmo passo).
  */
-export type DerailReason = 'offBoard' | 'noExit' | 'wrongStation' | 'collision';
+export type DerailReason =
+  | 'offBoard'
+  | 'noExit'
+  | 'water'
+  | 'wrongStation'
+  | 'collision';
 
 /**
  * Estado de uma locomotiva.
@@ -300,6 +331,10 @@ export interface TrainSetup {
  * `lives` ausente = fase sem vidas (D1 tutorial: a falha não existe como
  * estado/custo). Quando presente, deve ser um inteiro ≥ 1 — validado no
  * setup. O `GameState` inicial herda o valor (`null` quando ausente).
+ *
+ * `coins` é o overlay de moedas da fase: cada célula deve conter trilho
+ * (peça móvel ou ponte fixa), nunca água/estação/vazio. A lista é validada e
+ * pode ser omitida nas fases sem moedas (P0/P1).
  */
 export interface LevelLayout {
   readonly id: string;
@@ -307,6 +342,7 @@ export interface LevelLayout {
   readonly board: Board;
   readonly trains: readonly TrainSetup[];
   readonly lives?: number;
+  readonly coins?: readonly CellPos[];
 }
 
 /**
@@ -372,7 +408,7 @@ export type ActionOutcome =
  *
  * Ordem dentro de um passo, espelhando o GDD §3.6:
  * `pieceRotated`/`pieceToggled` (ação) → `trainMoved` (movimento calculado)
- * → `trainDelivered` (entregas) → coleta P2 (slot vazio no P0) →
+ * → `trainDelivered` (entregas) → `coinCollected` (coleta) →
  * `collision`/`trainDerailed` (colisões e descarrilamentos) → `lifeLost`
  * (consequência) → `victory`/`deadEnd` (fim de jogo).
  *
@@ -385,6 +421,11 @@ export type ActionOutcome =
  * no mesmo destino; duas para troca de células no mesmo passo). Cada
  * participante também recebe um `trainDerailed` com `reason: 'collision'`,
  * para que o consumidor trate toda saída de trem de forma uniforme.
+ *
+ * `coinCollected` sai no slot de coleta (depois de entregas, antes de
+ * colisões/descarrilamentos). A moeda está na célula de CHEGADA do mover e
+ * conta mesmo que o trem morra no mesmo passo (D16); cada célula é coletada no
+ * máximo uma vez e o `GameState.coinsCollected` acompanha o evento.
  *
  * `lifeLost` é emitido uma vez por EVENTO que gasta vida — uma colisão,
  * independentemente do número de trens, ou um descarrilamento independente —,
@@ -416,6 +457,12 @@ export type GameEvent =
       readonly kind: 'trainDelivered';
       readonly trainId: TrainId;
       readonly station: CellPos;
+    }
+  | {
+      readonly kind: 'coinCollected';
+      readonly trainId: TrainId;
+      /** Célula de CHEGADA do mover; a moeda já sai do tabuleiro. */
+      readonly cell: CellPos;
     }
   | {
       readonly kind: 'trainDerailed';
@@ -466,12 +513,17 @@ export type GameStatus = 'ready' | 'playing' | 'won' | 'deadEnd' | 'lost';
  * `lives` é o saldo da run: `null` = fase sem vidas (D1 tutorial), número =
  * vidas restantes (0 no estado `lost`). O valor inicial vem de
  * `LevelLayout.lives`; o passo que gasta a última vida leva a `lost`.
+ *
+ * `coinsCollected` são as moedas já coletadas nesta run, na ordem de coleta.
+ * O array é único (cada célula aparece no máximo uma vez): o contador burro é
+ * `coinsCollected.length`. Sem fórmula/persistência; reiniciar esvazia.
  */
 export interface GameState {
   readonly levelId: string;
   readonly board: Board;
   readonly trains: readonly Train[];
   readonly lives: number | null;
+  readonly coinsCollected: readonly CellPos[];
   readonly step: number;
   readonly status: GameStatus;
 }
@@ -501,6 +553,8 @@ export interface ApplyResult {
  *   `direction`; `cell` é a última célula dentro da grade;
  * - `noExit`: o trem para/descarrila em `cell` (célula vazia ou peça sem
  *   conexão para a direção de entrada);
+ * - `water`: o trem para/descarrila na água de `cell` (rio sem ponte); é um
+ *   marcador distinto de `noExit` no render (E12);
  * - `loop`: revisita de (célula + direção de entrada) — ciclo fechado (D2);
  * - `limit`: o cap de segurança foi atingido antes de uma parada natural.
  */
@@ -516,6 +570,7 @@ export type PredictionStop =
       readonly direction: Direction;
     }
   | { readonly kind: 'noExit'; readonly cell: CellPos }
+  | { readonly kind: 'water'; readonly cell: CellPos }
   | { readonly kind: 'loop'; readonly cell: CellPos }
   | { readonly kind: 'limit'; readonly cell: CellPos };
 

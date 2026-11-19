@@ -61,6 +61,16 @@ export function station(color: Color = RED, shape: Shape = 'circle'): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
 }
 
+/** Célula de água de uma banda de rio. */
+export function river(): Cell {
+  return { kind: 'fixed', fixed: { kind: 'river' } };
+}
+
+/** Célula de ponte fixa; `axis` é o sentido da travessia. */
+export function bridge(axis: 'east-west' | 'north-south'): Cell {
+  return { kind: 'fixed', fixed: { kind: 'bridge', axis } };
+}
+
 /**
  * Primeira célula de entrada como trilho alinhado (helper de teste).
  *
@@ -159,8 +169,17 @@ export function gameState(
   step = 0,
   status: GameStatus = 'playing',
   lives: number | null = null,
+  coinsCollected: readonly CellPos[] = [],
 ): GameState {
-  return { levelId: 'test', board: cells, trains, lives, step, status };
+  return {
+    levelId: 'test',
+    board: cells,
+    trains,
+    lives,
+    coinsCollected,
+    step,
+    status,
+  };
 }
 
 /** Tipos de evento em ordem, para asserts de sequência. */

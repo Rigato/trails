@@ -157,20 +157,23 @@ export function moveThroughPiece(
  *
  * - `exit`: a célula tem trilho e o trem sai na direção indicada;
  * - `station`: a célula é estação; a entrega/descarrilamento depende da cor;
- * - `noExit`: o trem para/descarrila na célula (vazia ou peça sem conexão).
+ * - `water`: a célula é rio; o trem para/descarrila na água;
+ * - `noExit`: o trem para/descarrila na célula (vazia, peça sem conexão ou
+ *   ponte acessada fora do eixo).
  */
 export type CellExit =
   | { readonly kind: 'exit'; readonly direction: Direction }
   | { readonly kind: 'station' }
+  | { readonly kind: 'water' }
   | { readonly kind: 'noExit' };
 
 /**
  * Resolve o que acontece com um trem que está sobre `cell` vindo de
  * `incoming`.
  *
- * Peças usam a tabela de movimento; a estação é um ponto de parada (quem chama
- * decide entrega ou descarrilamento pela cor). Não existe mais célula fixa de
- * entrada: a primeira célula é uma peça comum.
+ * Peças usam a tabela de movimento; a estação é um ponto de parada; o rio para
+ * na água; a ponte conduz apenas ao longo do seu eixo (quem entra de lado não
+ * conecta). A primeira célula da entrada é uma peça comum.
  */
 export function resolveCell(cell: Cell, incoming: Direction): CellExit {
   switch (cell.kind) {
@@ -185,6 +188,21 @@ export function resolveCell(cell: Cell, incoming: Direction): CellExit {
     }
 
     case 'fixed':
-      return { kind: 'station' };
+      switch (cell.fixed.kind) {
+        case 'station':
+          return { kind: 'station' };
+        case 'river':
+          return { kind: 'water' };
+        case 'bridge': {
+          const alongAxis =
+            cell.fixed.axis === 'east-west'
+              ? incoming === 'east' || incoming === 'west'
+              : incoming === 'north' || incoming === 'south';
+
+          return alongAxis
+            ? { kind: 'exit', direction: incoming }
+            : { kind: 'noExit' };
+        }
+      }
   }
 }

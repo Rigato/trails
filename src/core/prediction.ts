@@ -116,6 +116,10 @@ export function predictPath(
       return finish(train, path, { kind: 'noExit', cell: current });
     }
 
+    if (exit.kind === 'water') {
+      return finish(train, path, { kind: 'water', cell: current });
+    }
+
     if (exit.kind === 'station') {
       const correct =
         cell.kind === 'fixed' &&
@@ -161,7 +165,18 @@ export function predictPath(
       return finish(train, path, { kind: 'noExit', cell: next });
     }
 
+    if (
+      destination.kind === 'fixed' &&
+      destination.fixed.kind === 'river'
+    ) {
+      return finish(train, path, { kind: 'water', cell: next });
+    }
+
     const destinationExit = resolveCell(destination, exit.direction);
+
+    if (destinationExit.kind === 'water') {
+      return finish(train, path, { kind: 'water', cell: next });
+    }
 
     if (destinationExit.kind !== 'exit') {
       return finish(train, path, { kind: 'noExit', cell: next });
