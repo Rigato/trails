@@ -1,74 +1,114 @@
 /**
- * Fase P1 «Sincronia» — RASCUNHO (o layout definitivo é do E9/SA4).
+ * Fase P1 «Sincronia» — layout DEFINITIVO (E9).
  *
- * 6×6, 2 trens (vermelho/círculo e azul/quadrado), 2 estações, 3 vidas e
- * 2 Ys. O dado é puro; editar o layout não toca no motor. O E9 expande para
- * 12–20 passos, decoys e colisão possível — este rascunho prova a janela de
- * sincronia e o rearme do Y.
+ * 6×6, 2 trens (vermelho/círculo e azul/quadrado), 2 estações, 3 vidas
+ * (D7) e 4 Ys. O dado é puro; editar o layout não toca no motor. O rascunho
+ * do SA1 entregava em 8 passos e não produzia colisão (os trens andavam em
+ * lockstep com gap constante). Este layout existe para o experimento
+ * Q3/Q4/Q8: ABAB sob pressão, janela de sincronia e sacrifício.
  *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
  *       0  1  2  3  4  5
  *   0   .  .  .  .  .  .
  *   1   .  @  Y  #  .  .
- *   2   .  .  |  .  c  <
- *   3   >  |  Y  |  c  .
- *   4   .  .  .  .  .  .
- *   5   .  .  .  .  .  .
+ *   2   .  .  |  c  c  .
+ *   3   c  c  |  |  |  .
+ *   4   |  c  Y  Y  Y  <
+ *   5   ^  .  .  c  c  .
  *
- *   `>` entrada vermelha leste em (0,3); `<` entrada azul oeste em (5,2).
- *   `@` estação vermelha/círculo em (1,1); `#` estação azul/quadrado em (3,1).
- *   `|` reta; `c` curva; `Y` desvio (merge em (2,3), split em (2,1)).
+ *   `^` entrada vermelha norte em (0,5); `<` entrada azul oeste em (5,4).
+ *   `@` estação vermelha/círculo em (1,1); `#` estação azul/quadrado em
+ *   (3,1); `|` reta; `c` curva; `Y` desvio.
  *
- * OS DOIS Ys
- *   - Merge (2,3), `y(0, 0, 'toggle')`: talo N, pontas L/O, lado S fechado.
- *     Vermelho entra pela ponta O; azul entra pela ponta L; ambos saem pelo
- *     talo N. Ponta→talo não depende da agulha ativa: o merge é só o ponto de
- *     encontro dos dois ramos.
- *   - Split (2,1), `y(2, 0, 'toggle')`: talo S, ponta O (braço 0) / L (braço
- *     1), lado N fechado. Vermelho entra pelo talo e sai O para @; o toque no
- *     passo 7 troca a agulha para o braço 1, e o azul sai L para #. Primeiro
- *     toque de cada Y = trocar a ponta (ABAB/D8).
+ * OS QUATRO Ys
+ *   - S = (2,1), split: rot 1 / arm 1 / next toggle (inicial).
+ *     Correto: rot 2 (talo S, braços O/L, lado N fechado). O primeiro toque
+ *     troca a ponta (arm 1→0), o segundo gira (rot 1→2) — ABAB. O vermelho
+ *     passa no passo 9 com arm 0 (O → @); o azul passa no 11 e precisa de
+ *     arm 1 (L → #). Este é O Y DA JANELA: a agulha é rearmada no passo 11.
+ *   - M = (2,4), merge vermelho/azul: rot 0 (talo N, braços L/O). O vermelho
+ *     entra pelo braço O, o azul pelo braço L; ambos saem pelo talo N. A
+ *     agulha de M é indiferente (entrada por braço sempre sai pelo talo).
+ *   - m = (3,4), merge dos dois braços do azul: rot 3 (talo O, braços N/S).
+ *     O braço longo do azul chega pelo N; o curto pelo S; ambos saem O para M.
+ *     Também é indiferente à agulha.
+ *   - E = (4,4), switch de comprimento do azul: rot 1 (talo L, braços N/S),
+ *     arm 0 (S = atalho) inicial. Um toque (arm 0→1) escolhe o braço N, o
+ *     caminho LONGO até M; deixar arm 0 escolhe o atalho e produz a colisão.
  *
- * JANELA DE SINCRONIA (o coração do P1)
- *   vermelho: merge no passo 3, corredor no 4, split no 5, @ no 6.
- *   azul:     merge no passo 5, corredor no 6, split no 7, # no 8.
+ * SOLUÇÃO DOCUMENTADA — 12 PASSOS (2/2, 3 vidas)
+ *   1. toggle S (2,1)   arm 1→0; os dois trens entram nas entradas (§3.5).
+ *   2. toggle E (4,4)   arm 0→1: o azul pega o braço longo; M no passo 8.
+ *   3. rotate S (2,1)   rot 1→2, arm 0: talo S; @ vermelho à vista.
+ *   4. passar           vermelho em (1,3); azul em (4,2).
+ *   5. passar           vermelho em (1,4); azul em (3,2).
+ *   6. passar           vermelho em M (2,4); azul em (3,3).
+ *   7. passar           vermelho em (2,3); azul em m (3,4).
+ *   8. passar           vermelho em (2,2); azul em M (2,4).
+ *   9. passar           vermelho em S (2,1); azul em (2,3). [janela abre]
+ *  10. passar           vermelho em @ (1,1), ENTREGUE; azul em (2,2).
+ *  11. toggle S (2,1)   arm 0→1: rearma para o azul. [janela fecha]
+ *  12. passar           azul em # (3,1), ENTREGUE; vitória 2/2.
  *
- *   O split fica ocupado pelo vermelho no passo 5. No início do passo 6 ele
- *   ainda está ocupado (o vermelho só sai durante a ação), então o primeiro
- *   toque livre no Y é o passo 7 — exatamente quando o azul chega. O toggle
- *   do passo 7 rearma a agulha de O para L e libera a entrega azul. Sem ele,
- *   o azul vai para a estação vermelha e descarrila (ver rotas de falha).
+ *   Janela da sincronia: S é atravessado no passo 9 (vermelho) e no passo 11
+ *   (azul) — 2 passos. O vermelho deixa S no passo 10; o primeiro toque livre
+ *   é o passo 11, e é exatamente a chegada do azul. A agulha de S é rearmada
+ *   nesse passo. Sem esse toggle, NÃO há 2/2 (ver sacrifício).
  *
- * SOLUÇÃO DOCUMENTADA (8 passos; 2 giros + 1 toggle + 5 passes)
- *   1. girar (1,3)   reta 0 (N–S) → 1 (L–O)
- *   2. girar (2,2)   reta 1 (L–O) → 2 (N–S)
- *   3. passar
- *   4. passar
- *   5. passar
- *   6. passar
- *   7. tocar o Y de (2,1): toggle arm0 (O) → arm1 (L)
- *   8. passar
+ *   A janela de M também é de 2 passos (vermelho no 6, azul no 8), mas M é um
+ *   merge: os dois entram por braços, então a agulha não decide nada. O
+ *   caminho longo do azul até M é a aritmética de comprimento que cria o
+ *   vetor de colisão: M no 8; o atalho chega no 6, o mesmo passo do vermelho.
  *
- *   O primeiro passo também coloca os dois trens nas entradas (§3.5: todos
- *   partem juntos).
+ * TUTORIAL DISTRIBUÍDO / ABAB SOB PRESSÃO
+ *   Primeiro quadro: a previsão do vermelho termina em # (estação azul) com
+ *   X de cor errada; a do azul termina em # correta. As duas passam por S.
+ *   O primeiro toque em S (toggle) move só a agulha — as duas entradas em S
+ *   são por braço, então a rota não muda; o segundo toque (rotate) é o que
+ *   conserta a orientação. Entre os dois, o jogador precisa tocar E até o
+ *   passo 2 — a ação resolve antes do movimento, então o passo 2 é o último
+ *   instante antes de o azul entrar em E. A alternância entre os DOIS Ys é o
+ *   contrato do P1, não só a alternância dentro de um Y.
  *
- * CAMINHOS
- *   vermelho: (0,3) → (1,3) → merge (2,3) → (2,2) → split (2,1) → @ (1,1)
- *             entregue no passo 6.
- *   azul:     (5,2) → (4,2) → (4,3) → (3,3) → merge (2,3) → (2,2) →
- *             split (2,1) → # (3,1), entregue no passo 8.
+ * SACRIFÍCIO (Q8) — 1/2, 2 vidas
+ *   Passos 1–10 da solução; no 11 passar em vez de tocar S; no 12 passar.
+ *   O vermelho entrega no 10; o azul entra em S com arm 0, sai O no 12 e
+ *   descarrila na estação vermelha (wrongStation). A vitória é dinâmica
+ *   (§3.7): 1 de 2 ainda vence. A vida cai de 3 para 2. É a escolha real do
+ *   experimento: pular o rearme e aceitar a perda do azul.
  *
- * ROTAS DE FALHA (o experimento Q3/Q4/Q8)
- *   - Sem o toggle do passo 7, o azul entra no split com a agulha O, vai para
- *     a estação vermelha e descarrila por cor. O vermelho já foi entregue →
- *     vitória dinâmica com 1 de 2 (rota sacrificial). O E9 decide se isso é o
- *     «chocha» esperado ou se a fase precisa de mais pressão.
- *   - Errar o giro de (1,3) ou (2,2) descarrila o trem correspondente. Com 2
- *     trens, 3 vidas e no máximo 2 eventos de perda, `lost` é inalcançável no
- *     conteúdo do P1 (plano §2.2); ele é testado no core com 3 trens
- *     fabricados.
- *   - Os dois trens perdidos → deadEnd; 1 entregue + 1 perdido → won.
+ * COLISÃO (a sequência de erro razoável) — 2 trens, 1 vida, deadEnd
+ *   O jogador vê o X do vermelho e toca S duas vezes seguidas (toggle no 1,
+ *   rotate no 2), esquecendo E até o passo 2 — quando o azul chega em E.
+ *   Com E em arm 0, o azul pega o atalho: M no passo 6, o MESMO passo do
+ *   vermelho. Os dois entram na célula de M no passo 6: colisão em M (2,4),
+ *   os dois descarrilam (reason collision), uma vida (3→2), deadEnd. A
+ *   previsão de cada trem mostra o caminho até M; ela não mostra o encontro
+ *   (Pilar 3/D2: caminhos independentes), então a colisão é o drama.
+ *
+ *   Sequência exata: 1 toggle S, 2 rotate S, 3 passar, 4 passar, 5 passar,
+ *   6 passar → colisão. (O passo 6 também pode ser qualquer ação válida; o
+ *   movimento é o que resolve.)
+ *
+ * CONTAGEM DE PASSOS / COMPRIMENTOS
+ *   vermelho: (0,5) → (0,4) → (0,3) → (1,3) → (1,4) → M(2,4) [passo 6] →
+ *             (2,3) 7 → (2,2) 8 → S(2,1) 9 → @(1,1) 10.
+ *   azul:     (5,4) → E(4,4) → (4,3) → (4,2) → (3,2) → (3,3) → m(3,4) →
+ *             M(2,4) [passo 8] → (2,3) 9 → (2,2) 10 → S(2,1) 11 →
+ *             #(3,1) 12.
+ *   atalho do azul (braço S de E): (5,4) → E → (4,5) → (3,5) → m → M
+ *             [passo 6] → colisão com o vermelho.
+ *
+ *   O tabuleiro tem 16 peças, todas em pelo menos uma rota (vermelha, azul
+ *   longa, azul curta ou corredor compartilhado): zero decoys. O braço curto
+ *   do azul não é decoy — é a rota errada do experimento.
+ *
+ * VIDAS / DERROTA
+ *   3 vidas (D7). Colisão custa 1 independentemente dos dois trens; um
+ *   descarrilamento independente custa 1. Com 2 trens o máximo é 2 eventos,
+ *   então `lost` é inalcançável neste conteúdo (plano §2.2); ele é testado no
+ *   core com 3 trens fabricados. deadEnd e won são os fins reais da fase.
  */
 
 import type {
@@ -126,41 +166,39 @@ function entry(direction: Direction): Cell {
 /**
  * Grade 6×6; `rows[row][col]`.
  *
- * Orientações iniciais: (1,3) e (2,2) começam um quarto de volta atrás da
- * orientação correta (os dois giros da solução); (4,2), (4,3) e (3,3) já
- * estão corretas. O merge e o split usam a convenção canônica do Y.
+ * As orientações das peças de reta/curva são as da solução desde o início; a
+ * dificuldade está nos Ys. S nasce one-toggle-behind (rot 1, arm 1) e E nasce
+ * no braço curto (arm 0); M e m são passivos.
  */
 const board: Board = {
   width: 6,
   height: 6,
   rows: [
     [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
-    // (1,1) @ vermelho; (2,1) split Y rot 2 / arm 0; (3,1) # azul.
-    [
-      EMPTY,
-      station(RED, RED_SHAPE),
-      y(2, 0, 'toggle'),
-      station(BLUE, BLUE_SHAPE),
-      EMPTY,
-      EMPTY,
-    ],
-    // (2,2) corredor reta 1 (L–O) → 2 (N–S); (4,2) curva E–S correta;
-    // (5,2) entrada azul.
-    [EMPTY, EMPTY, straight(1), EMPTY, curve(1), entry('west')],
-    // (1,3) reta 0 (N–S) → 1 (L–O); (2,3) merge Y rot 0 / arm 0;
-    // (3,3) reta E–O; (4,3) curva W–N; (0,3) entrada vermelha.
-    [entry('east'), straight(0), y(0, 0, 'toggle'), straight(1), curve(3), EMPTY],
-    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
-    [EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY],
+    // @ vermelho (1,1); S split (2,1) rot 1 / arm 1; # azul (3,1).
+    [EMPTY, station(RED, RED_SHAPE), y(1, 1, 'toggle'), station(BLUE, BLUE_SHAPE), EMPTY, EMPTY],
+    // Corredor (2,2) reta N-S; braço longo do azul: (3,2) curva E-S,
+    // (4,2) curva S-O.
+    [EMPTY, EMPTY, straight(0), curve(1), curve(2), EMPTY],
+    // Vermelho: (0,3) curva S-L, (1,3) curva S-O; corredor (2,3);
+    // azul longo: (3,3) reta N-S, (4,3) reta N-S.
+    [curve(1), curve(2), straight(0), straight(0), straight(0), EMPTY],
+    // Vermelho: (0,4) reta N-S, (1,4) curva N-L; M em (2,4);
+    // m em (3,4) rot 3; E em (4,4) rot 1 / arm 0; entrada azul (5,4).
+    [straight(0), curve(0), y(0, 0, 'toggle'), y(3, 0, 'toggle'), y(1, 0, 'toggle'), entry('west')],
+    // Entrada vermelha (0,5) norte; atalho do azul: (3,5) curva L-N,
+    // (4,5) curva N-O.
+    [entry('north'), EMPTY, EMPTY, curve(0), curve(3), EMPTY],
   ],
 };
 
 /**
  * Fase P1 como dado puro.
  *
- * As duas entradas são distintas e os dois trens entram no primeiro passo. A
- * fase tem 3 vidas (D7); a derrota por zerar as vidas é inalcançável com 2
- * trens, mas o estado `lost` existe no contrato e é testado no core.
+ * As duas entradas são distintas e os dois trens entram no primeiro passo
+ * (§3.5). A fase tem 3 vidas (D7); `lost` é inalcançável com 2 trens, mas o
+ * contrato existe e é testado no core. As estações ficam internas, uma de
+ * cada lado do split, para o rearme do passo 11 decidir o destino do azul.
  */
 export const P1_LEVEL: LevelLayout = {
   id: 'p1-sincronia',
@@ -172,13 +210,13 @@ export const P1_LEVEL: LevelLayout = {
       id: 'red',
       color: RED,
       shape: RED_SHAPE,
-      entry: { col: 0, row: 3 },
+      entry: { col: 0, row: 5 },
     },
     {
       id: 'blue',
       color: BLUE,
       shape: BLUE_SHAPE,
-      entry: { col: 5, row: 2 },
+      entry: { col: 5, row: 4 },
     },
   ],
 };
