@@ -10,7 +10,9 @@ Pré-protótipo. MVP de validação de regras com fases descartáveis. Decisão 
 
 **P0 «Contrato» implementado e aprovado em playtest (18–19/11/2026)**: tutorial 6×6 jogável de ponta a ponta — 1 ação = 1 passo, previsão, «passar turno», animação com buffer, hint do primeiro giro.
 
-**P1 «Sincronia» implementado (19/11/2026)**: peça Y (8 estados, ABAB por peça, agulha animada), 2º trem (azul/quadrado), vidas por fase no dado (3 na Sincronia; tutorial sem vidas), handoff tutorial→Sincronia, fase definitiva de 12 passos com janela de sincronia (passos 9→11), colisão por convergência e rota sacrificial — 136 testes. Pendente: a sessão de playtest (Q3/Q4/Q8 do plano de protótipo) e o registro de D1–D11 no GDD via Hefesto.
+**P1 «Sincronia» implementado (19/11/2026)**: peça Y (8 estados, ABAB por peça, agulha animada), 2º trem (azul/quadrado), vidas por fase no dado (3 na Sincronia; tutorial sem vidas), handoff tutorial→Sincronia, fase definitiva de 12 passos com janela de sincronia (passos 9→11), colisão por convergência e rota sacrificial. Ajustes pós-playtest: trens esperam FORA do tabuleiro (entrada = marcador de borda + trilho na primeira célula) e indicação do Y = seta da rota + realce do canal ativo.
+
+**P2 «Obstáculos» implementado (19/11/2026)**: rio (banda reta, `water` com marcador próprio) com ponte única fixa, moedas como contador burro (slot §3.6, coleta por chegada, sem fórmula), fase definitiva com escolha real de rotas (oeste/ponte 14 passos·5 moedas vs leste 11·3), janela do split com a tentação de espera do Q5 e sacrifício de água — 182 testes. Pendências: playtest do P2 (Q2/Q5/posicionamento de moedas), V-4 (trens cortados nas entradas laterais do P0/P1 — decisão de design) e o registro de D1–D16 no GDD via Hefesto (texto pronto no relatório E15).
 
 Versionamento: git com push constante para `https://github.com/Rigato/trails`; GitHub Pages servindo o último estado jogável em **https://rigato.github.io/trails/** (deploy automático a cada push em `main`).
 

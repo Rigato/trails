@@ -4,7 +4,9 @@ import { predictPath } from '../../src/core/prediction';
 import { resolveStep } from '../../src/core/step';
 import {
   board,
+  BLUE,
   bridge,
+  collisionsOf,
   derailsOf,
   EMPTY,
   eventKinds,
@@ -92,6 +94,43 @@ describe('rio — água', () => {
       'deadEnd',
     ]);
     expect(result.state.lives).toBe(2);
+  });
+
+  it('dois trens na mesma célula de água no mesmo passo = colisão (1 vida)', () => {
+    const cells = board([[straight(1), river(), straight(1)]]);
+    const result = resolveStep(
+      gameState(
+        cells,
+        [
+          runningTrain('a', RED, 'circle', pos(0, 0), 'east'),
+          runningTrain('b', BLUE, 'square', pos(2, 0), 'west'),
+        ],
+        0,
+        'playing',
+        3,
+      ),
+    );
+
+    expect(collisionsOf(result.events)).toHaveLength(1);
+    expect(collisionsOf(result.events)[0]?.cells).toEqual([pos(1, 0)]);
+    expect(derailsOf(result.events).map((event) => event.reason)).toEqual([
+      'collision',
+      'collision',
+    ]);
+    expect(lifeLossesOf(result.events)).toEqual([
+      { kind: 'lifeLost', step: 1, remaining: 2 },
+    ]);
+    expect(eventKinds(result.events)).toEqual([
+      'trainMoved',
+      'trainMoved',
+      'collision',
+      'trainDerailed',
+      'trainDerailed',
+      'lifeLost',
+      'deadEnd',
+    ]);
+    expect(result.state.lives).toBe(2);
+    expect(result.state.status).toBe('deadEnd');
   });
 
   it('previsão para na água quando a célula atual é rio', () => {

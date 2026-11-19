@@ -28,8 +28,9 @@ export interface Palette {
   /** Trilho e traços estruturais (grade, ícones do HUD). */
   readonly track: string;
   /**
-   * Água das células de rio. Teal escolhido para não competir com o par azul:
-   * P2 usa `#2f6fb0` (indigo) e P1 `#3b82f6`; a água fica no eixo ciano-verde.
+   * Água das células de rio. Teal escolhido para não competir com o azul:
+   * P1 e P2 usam `pairs[1]` = `#3b82f6`; a água fica no eixo ciano-verde,
+   * distante dele.
    */
   readonly river: string;
   /**

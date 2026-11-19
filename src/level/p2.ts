@@ -90,6 +90,9 @@
  *   split; a ponte é o cruzamento central e a moeda da ponte é do vermelho.
  *   rota leste/ponta: 11 ações, 3 moedas, exige só o toggle da entrada; o azul
  *   contorna a água pela ponta de baixo (3,5), sem merge/ponte/split.
+ *   EXCEÇÃO DELIBERADA: o piso 12–20 vale para a rota OFICIAL (oeste, 14); a
+ *   leste (11) é a escolha barata do trade-off — registrado para o designer
+ *   confirmar em playtest.
  *
  * FALHAS E SACRIFÍCIO
  *   - ÁGUA (azul, ignorar o desvio): sem a rotação (2,3), o azul entra em

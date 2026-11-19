@@ -63,7 +63,7 @@ Estimativas em sessões; E11 e E12 correm em paralelo após o contrato de tipos 
 
 ### E14 — Fase «Obstáculos» · ~1 sessão · SA4
 - `level/p2.ts` definitivo + `test/level/p2.test.ts` + `PHASES` ganha a fase (handoff Sincronia→Obstáculos).
-- **Requisitos da fase:** rio atravessando as rotas com **uma** ponte; **desvio com custo de ação real** (girar a rota para a ponte custa passos — o rio não pode ser corredor); **janela da ponte** disputável se 2 trens a usarem (o P1 ensinou sincronia; o P2 cobra na ponte); **moedas perto do risco** (na ponte, na junção, no trecho apertado — o desvio corajoso paga); 2–3 trens (com 3, `lost` alcançável — decisão documentada); solução 12–20 passos + **rota sacrificial** documentadas; Q5: uma situação em que **esperar é tentador** (deixe os trens assentarem antes da ponte) — a fase provoca a «espera de graça» para o playtest ler o que o jogador faz com ela.
+- **Requisitos da fase:** rio atravessando as rotas com **uma** ponte; **desvio com custo de ação real** (girar a rota para a ponte custa passos — o rio não pode ser corredor); **janela da ponte** disputável se 2 trens a usarem (o P1 ensinou sincronia; o P2 cobra na ponte); **moedas perto do risco** (na ponte, na junção, no trecho apertado — o desvio corajoso paga); 2–3 trens (com 3, `lost` alcançável — decisão documentada); solução 12–20 passos + **rota sacrificial** documentadas; Q5: uma situação em que **esperar é tentador** (deixe os trens assentarem antes da ponte) — a fase provoca a «espera de graça» para o playtest ler o que o jogador faz com ela. *(Realização E14: o piso 12–20 vale para a solução oficial — oeste, 14 passos; a rota alternativa leste entrega em 11 como a escolha barata do trade-off 14·5 vs 11·3 — exceção deliberada, a confirmar em playtest.)*
 - **Pronto quando:** solução entrega sem punição arbitrária (desvio = problema a resolver); há ESCOLHA real (≥2 rotas viáveis com custos distintos — sinal de falha do brief é rota única); moedas posicionadas onde o desvio é corajoso; walkthrough próprio via CDP; wingdings (rio ≠ trilho num relance).
 
 ### E15 — Auditoria P2 + handoff · ~0,5 sessão · SA5
@@ -98,10 +98,11 @@ Mesma regra: `opencode-go/deepseek-v4.1-flash#max`, um por frente; orquestrador 
 
 | Parâmetro | Default | Efeito |
 |---|---|---|
-| `palette.river` | `#3a6ea8` (azul-água, distante do par azul `#3b82f6`? — decidir com o render em frente à paleta inteira) | Água das células de rio |
-| `palette.bridge` | cor do trilho | Travessia |
-| `coinRatio` | 0.22 | Tamanho da moeda relativo à célula |
-| `coinPulseMs` | 300 | Feedback de coleta |
+| `palette.river` | `#2f8f9d` (decidido no E12: teal distante do par azul `#3b82f6` e do trilho; o plano propunha `#3a6ea8` e pedia «decidir com o render em frente à paleta» — decidido) | Água das células de rio |
+| `coinRatio` | 0.22 | Tamanho da moeda relativo à célula (piso de desenho ~6 px) |
+| `coinPulseMs` | 300 | Feedback de coleta (pulse na célula + tick no HUD, nascendo no início do passo — D16) |
+
+A ponte não ganhou `palette.bridge`: o deck usa `palette.background` + `palette.track` (o default «cor do trilho» honrado sem um knob a mais — decidido no E12).
 
 Vidas e moedas por fase continuam no **dado do layout** (regra, não feel).
 
@@ -109,7 +110,7 @@ Vidas e moedas por fase continuam no **dado do layout** (regra, não feel).
 
 **Já decididas pelo designer (pós-playtest P1, em aplicação):**
 - **D12 — Indicação do Y:** seta da rota (talo→ponta ativa) + realce do canal ativo (redundância). Substitui a cunha central.
-- **D13 — Entrada off-board:** trens esperam fora da grade; entrada é marcador de borda; a **primeira célula é trilho** (qualquer peça; as fases atuais usam reta alinhada). O `Entry` fixo de célula morre.
+- **D13 — Entrada off-board:** trens esperam fora da grade; entrada é marcador de borda; a **primeira célula é trilho** (qualquer peça — o P2 usou um **Y de entrada** deliberadamente, com a agulha nascendo apontando para a água; o reta-alinhada ficou só no P0/P1). O `Entry` fixo de célula morre. **Pendência V-4 (pós-auditoria):** nas entradas laterais (P0/P1), o trem esperando fica cortado pelo canvas (P0: 3 px visíveis); o P2 evitou com entradas topo/fundo. Decisão de design em aberto: clampar o ponto de espera ao canvas, ampliar a margem do shell, ou mover as entradas do P0/P1 para topo/fundo.
 
 **D14 (DECIDIDA pelo designer, 19/11/2026): manter rotação CW.** Raciocínio do designer: **estabilidade** — o que funciona não trava o desenvolvimento; a decisão volta à mesa **depois do P2 concluído**, com mais elementos em jogo e mais certeza da necessidade real (o desvio obrigatório do P2 dará dados novos sobre a dor de 270°). **Mecanismo candidato registrado (ideia do designer, para a eventual variante):** um **seletor de sentido FORA do tabuleiro**, em forma de seta, que o jogador alterna **antes** de selecionar a peça a girar — aplicável a **todas as peças**, não só ao Y. Questão aberta a examinar na hora: o seletor seria modo persistente (não gasta ação — escolha de ferramenta, não turno), com o risco de o jogador **esquecer o modo ativo** como nova classe de erro (mesma família que o Q3 mede no ABAB). Variantes de controle continuam branches — não pré-implementadas. Nenhum épico de input no P2.
 
