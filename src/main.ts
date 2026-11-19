@@ -721,6 +721,11 @@ function pruneFeedback(now: number): void {
 function draw(now: number): void {
   pruneFeedback(now);
 
+  const collected = new Set(game.state.coinsCollected.map((coin) => cellKey(coin)));
+  const coins = (level.coins ?? []).filter(
+    (coin) => !collected.has(cellKey(coin)),
+  );
+
   drawScene(ctx, layout, {
     state: game.state,
     predictions,
@@ -738,6 +743,8 @@ function draw(now: number): void {
     pulses,
     exits,
     lifePulses,
+    coins,
+    coinsTotal: level.coins?.length ?? 0,
   });
 }
 

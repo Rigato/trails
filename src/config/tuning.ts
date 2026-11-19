@@ -28,6 +28,11 @@ export interface Palette {
   /** Trilho e traços estruturais (grade, ícones do HUD). */
   readonly track: string;
   /**
+   * Água das células de rio. Teal escolhido para não competir com o par azul:
+   * P2 usa `#2f6fb0` (indigo) e P1 `#3b82f6`; a água fica no eixo ciano-verde.
+   */
+  readonly river: string;
+  /**
    * Cores default dos pares trem/estação por fase (P1+). A fase traz as cores
    * no dado; `pairs[0]` substitui o antigo `palette.pair` (F-01 continua
    * válido: o P0 lê a cor daqui).
@@ -64,6 +69,10 @@ export interface Tuning {
   readonly stationInsetRatio: number;
   /** Tamanho da agulha do Y relativo à célula. */
   readonly yNeedleRatio: number;
+  /** Diâmetro visual da moeda relativo à célula (anel; overlay sobre o trilho). */
+  readonly coinRatio: number;
+  /** Feedback de coleta da moeda (E13). */
+  readonly coinPulseMs: number;
   /** Tamanho do símbolo de forma (trem e estação) relativo à célula. */
   readonly symbolSizeRatio: number;
   /** Alvo de toque mínimo por célula, em pt CSS. */
@@ -103,6 +112,8 @@ export const TUNING: Tuning = {
   trackWidthRatio: 0.16,
   stationInsetRatio: 0.74,
   yNeedleRatio: 0.38,
+  coinRatio: 0.22,
+  coinPulseMs: 300,
   symbolSizeRatio: 0.28,
   cellMinCssPt: 44,
   buttonMinCssPt: 44,
@@ -117,6 +128,7 @@ export const TUNING: Tuning = {
   palette: {
     background: '#f4f1ea',
     track: '#3a3f44',
+    river: '#2f8f9d',
     pairs: ['#d64545', '#3b82f6'],
     predictionAlpha: 0.55,
   },

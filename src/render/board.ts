@@ -10,7 +10,7 @@
  * continua sendo o snapshot do core; os overrides só existem no quadro.
  */
 
-import type { Board, EntryPoint, Station } from '../core/types';
+import type { Board, Bridge, EntryPoint, Station } from '../core/types';
 import { TUNING } from '../config/tuning';
 import { cellCenter, type SceneLayout } from './layout';
 import { drawPiece } from './pieces';
@@ -67,14 +67,20 @@ export function drawBoard(
           needleAngles?.get(key),
         );
       } else if (content.kind === 'fixed') {
-        drawStation(
-          ctx,
-          content.fixed,
-          x,
-          y,
-          layout.cell,
-          stationScales?.get(key) ?? 1,
-        );
+        if (content.fixed.kind === 'station') {
+          drawStation(
+            ctx,
+            content.fixed,
+            x,
+            y,
+            layout.cell,
+            stationScales?.get(key) ?? 1,
+          );
+        } else if (content.fixed.kind === 'river') {
+          drawRiver(ctx, x, y, layout.cell);
+        } else {
+          drawBridge(ctx, content.fixed, x, y, layout.cell);
+        }
       }
     }
   }
@@ -120,6 +126,114 @@ function drawGrid(ctx: CanvasRenderingContext2D, layout: SceneLayout): void {
   ctx.stroke();
   ctx.restore();
 }
+
+/**
+ * Base de água de uma célula de rio: teal próprio (nunca cinza-trilho) + duas
+ * ondulações claras. A ponte usa a mesma base e desenha a travessia por cima.
+ */
+function drawWaterBase(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+): void {
+  ctx.save();
+  ctx.fillStyle = PALETTE.river;
+  ctx.fillRect(x, y, cell, cell);
+
+  ctx.strokeStyle = PALETTE.background;
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = Math.max(1, cell * 0.022);
+  ctx.lineCap = 'round';
+
+  for (let band = 0; band < 2; band += 1) {
+    const baseY = y + cell * (0.32 + 0.36 * band);
+    const amplitude = cell * 0.045;
+    const phase = band * Math.PI;
+    const steps = 10;
+
+    ctx.beginPath();
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      const px = x + cell * (0.08 + 0.84 * t);
+      const py = baseY + Math.sin(t * Math.PI * 2 + phase) * amplitude;
+
+      if (step === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/** Célula de rio: só água; a banda reta é formada pelas células contíguas. */
+function drawRiver(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+): void {
+  drawWaterBase(ctx, x, y, cell);
+}
+
+/**
+ * Ponte fixa sobre a água: deck claro (levemente elevado) + trilho escuro no
+ * eixo da travessia. A água aparece dos lados perpendiculares ao trilho; o
+ * deck é a leitura de «travessia», não de mais um trilho.
+ */
+function drawBridge(
+  ctx: CanvasRenderingContext2D,
+  bridge: Bridge,
+  x: number,
+  y: number,
+  cell: number,
+): void {
+  drawWaterBase(ctx, x, y, cell);
+
+  const cx = x + cell / 2;
+  const cy = y + cell / 2;
+  const deck = cell * 0.34;
+  const radius = Math.max(2, cell * 0.045);
+  const horizontal = bridge.axis === 'east-west';
+
+  ctx.save();
+
+  // Deck claro, com uma borda fina do trilho para separar da água.
+  ctx.beginPath();
+  if (horizontal) {
+    ctx.roundRect(x + cell * 0.015, cy - deck / 2, cell * 0.97, deck, radius);
+  } else {
+    ctx.roundRect(cx - deck / 2, y + cell * 0.015, deck, cell * 0.97, radius);
+  }
+  ctx.fillStyle = PALETTE.background;
+  ctx.fill();
+  ctx.strokeStyle = PALETTE.track;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = Math.max(1.5, cell * 0.022);
+  ctx.stroke();
+
+  // Trilho da travessia no eixo da ponte.
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = PALETTE.track;
+  ctx.lineWidth = Math.max(2, cell * TUNING.trackWidthRatio);
+  ctx.lineCap = 'butt';
+  ctx.beginPath();
+  if (horizontal) {
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x + cell, cy);
+  } else {
+    ctx.moveTo(cx, y);
+    ctx.lineTo(cx, y + cell);
+  }
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 
 /**
  * Estação em forma de casa: telhado triangular + bloco arredondado, na cor do

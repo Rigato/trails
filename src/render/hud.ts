@@ -14,6 +14,7 @@
 
 import type { GameState } from '../core/types';
 import { TUNING } from '../config/tuning';
+import { drawCoinGlyph } from './coin';
 import {
   lifePulseProgress,
   lifePulseRing,
@@ -37,6 +38,8 @@ export interface HudContext {
   readonly now: number;
   /** Marcas que acabaram de esvaziar e ainda pulsam (E8). */
   readonly lifePulses: readonly LifeLostPulse[];
+  /** Total de moedas da fase; `0` = fase sem moedas (P0/P1). */
+  readonly coinsTotal: number;
 }
 
 /**
@@ -111,19 +114,23 @@ function drawHeader(
   context: HudContext,
 ): void {
   const { header, headerFontSize } = layout;
+  const status = statusLabel(state);
 
   ctx.save();
+  ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
+  const statusWidth = Math.min(header.width * 0.42, ctx.measureText(status).width);
+
   ctx.globalAlpha = HEADER_ALPHA;
   ctx.fillStyle = PALETTE.track;
   ctx.textBaseline = 'middle';
   ctx.font = `500 ${headerFontSize}px ${FONT_STACK}`;
   ctx.textAlign = 'left';
-  ctx.fillText(levelName, header.x, header.y + header.height / 2, header.width * 0.58);
+  ctx.fillText(levelName, header.x, header.y + header.height / 2, header.width * 0.42);
 
   ctx.textAlign = 'right';
   ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
   ctx.fillText(
-    statusLabel(state),
+    status,
     header.x + header.width,
     header.y + header.height / 2,
     header.width * 0.42,
@@ -140,6 +147,45 @@ function drawHeader(
       context.lifePulses,
     );
   }
+
+  if (context.coinsTotal > 0) {
+    drawCoinCounter(ctx, layout, state.coinsCollected.length, statusWidth);
+  }
+}
+
+/**
+ * Contador burro de moedas: glifo de ouro + `coinsCollected.length`, à direita
+ * do cabeçalho antes do «passo N». Sem total, fórmula ou denominador — só o
+ * número coletado. Fase sem moedas não chega aqui.
+ */
+function drawCoinCounter(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  count: number,
+  statusWidth: number,
+): void {
+  const { header, headerFontSize } = layout;
+  const countText = String(count);
+
+  ctx.save();
+  ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
+  const countWidth = ctx.measureText(countText).width;
+  const coinRadius = Math.max(3, headerFontSize * 0.32);
+  const gap = Math.max(3, headerFontSize * 0.28);
+  const groupWidth = coinRadius * 2 + gap + countWidth;
+  const statusGap = Math.max(8, headerFontSize * 0.65);
+  const rightEdge = header.x + header.width - statusWidth - statusGap;
+  const groupLeft = rightEdge - groupWidth;
+  const cy = header.y + header.height / 2;
+
+  ctx.globalAlpha = HEADER_ALPHA;
+  ctx.fillStyle = PALETTE.track;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(countText, rightEdge, cy);
+
+  drawCoinGlyph(ctx, groupLeft + coinRadius, cy, coinRadius);
+  ctx.restore();
 }
 
 /** Rótulo curto do estado; o passo é a informação padrão durante o jogo. */

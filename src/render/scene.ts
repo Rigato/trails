@@ -17,6 +17,7 @@ import type {
 } from '../core/types';
 import { TUNING } from '../config/tuning';
 import { drawBoard } from './board';
+import { drawCoinRing } from './coin';
 import {
   drawCellFlash,
   drawDeliveryPulse,
@@ -28,7 +29,7 @@ import {
   type LifeLostPulse,
 } from './fx';
 import { drawHud } from './hud';
-import type { SceneLayout } from './layout';
+import { cellCenter, type SceneLayout } from './layout';
 import { drawPrediction, drawPredictionUnderlay } from './predictionView';
 import { drawTrainAt } from './train';
 
@@ -71,6 +72,10 @@ export interface Scene {
   readonly exits: readonly DerailExit[];
   /** Marcas de vida que acabaram de esvaziar (E8). */
   readonly lifePulses: readonly LifeLostPulse[];
+  /** Moedas ainda não coletadas (overlay sobre trilho; D16). */
+  readonly coins: readonly CellPos[];
+  /** Total de moedas da fase; `0` = fase sem moedas. */
+  readonly coinsTotal: number;
 }
 
 /** Desenha um quadro inteiro. */
@@ -145,6 +150,14 @@ export function drawScene(
     );
   }
 
+  // Moedas DEPOIS da previsão: o anel de ouro continua visível quando o traço
+  // passa pela célula (o miolo é vazado e mostra o trilho).
+  for (const coin of scene.coins) {
+    const center = cellCenter(layout, coin);
+
+    drawCoinRing(ctx, center.x, center.y, layout.cell * TUNING.coinRatio);
+  }
+
   for (const pulse of scene.pulses) {
     drawDeliveryPulse(ctx, layout, pulse, now);
   }
@@ -171,6 +184,7 @@ export function drawScene(
     hasNextPhase: scene.hasNextPhase,
     now,
     lifePulses: scene.lifePulses,
+    coinsTotal: scene.coinsTotal,
   });
   ctx.restore();
 }

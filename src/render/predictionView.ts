@@ -186,6 +186,18 @@ function tracePredictionRoute(
       continue;
     }
 
+    if (content?.kind === 'fixed' && content.fixed.kind === 'river') {
+      // Água não recebe pontilhado: o traço morre na borda do rio e a gota
+      // marcada no centro diz «para na água» sem lavar o teal da banda.
+      const previous = index > 0 ? path[index - 1] : undefined;
+      const entrySide = previous ? directionBetween(cell, previous) : undefined;
+
+      if (entrySide !== undefined) {
+        place(edgePoint(center, entrySide, half));
+      }
+      continue;
+    }
+
     if (content?.kind === 'piece') {
       if (content.piece.kind === 'y') {
         // Y: a rota selecionada entra/sai por lados que o core já resolveu. O
@@ -434,6 +446,52 @@ function drawStopMarker(
       ctx.moveTo(center.x - diagonal, center.y - diagonal);
       ctx.lineTo(center.x + diagonal, center.y + diagonal);
       ctx.stroke();
+      break;
+    }
+
+    case 'water': {
+      // Gota clara com contorno do trem + ondulações: «para na água», distinto
+      // do proibido de noExit. O preenchimento claro separa a gota do teal do
+      // rio; o miolo da água continua visível em volta.
+      const radius = cellSize * 0.19;
+      const cx = center.x;
+      const cy = center.y;
+
+      ctx.save();
+      ctx.globalAlpha = STOP_ALPHA;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - radius * 1.45);
+      ctx.bezierCurveTo(
+        cx + radius,
+        cy - radius * 0.35,
+        cx + radius * 0.95,
+        cy + radius * 0.85,
+        cx,
+        cy + radius * 0.85,
+      );
+      ctx.bezierCurveTo(
+        cx - radius * 0.95,
+        cy + radius * 0.85,
+        cx - radius,
+        cy - radius * 0.35,
+        cx,
+        cy - radius * 1.45,
+      );
+      ctx.closePath();
+      ctx.fillStyle = PALETTE.background;
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.045);
+      ctx.stroke();
+
+      ctx.lineWidth = Math.max(1.5, cellSize * 0.03);
+      ctx.beginPath();
+      ctx.arc(cx, cy + radius * 0.7, radius * 0.78, Math.PI * 0.18, Math.PI * 0.82);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy + radius * 0.7, radius * 1.06, Math.PI * 0.22, Math.PI * 0.78);
+      ctx.stroke();
+      ctx.restore();
       break;
     }
 
