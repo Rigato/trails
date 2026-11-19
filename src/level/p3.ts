@@ -1,99 +1,113 @@
 /**
- * Fase P3 «Densidade» — RASCUNHO (E16).
+ * Fase P3 «Densidade» — layout DEFINITIVO (E19, 3 trens).
  *
- * ATENÇÃO: layout RASCUNHO para validar túnel/cruzamento/montanha no motor e
- * destravar o render (E17). O layout definitivo é do E19/SA4 e pode mudar
- * peças, coordenadas e solução sem tocar no core.
+ * 6×6, 3 trens, 3 estações, 3 vidas. A sopa mecânica completa: 2 Ys, um par de
+ * túneis, um cruzamento, uma montanha e moedas (uma NO cruzamento). O terceiro
+ * par (verde/triângulo) é declarado no nível — `TUNING.palette.pairs` tem só os
+ * dois pares default. O vermelho/azul usam os pares do tuning.
  *
- * 6×6, 3 trens, 3 vidas. O terceiro par é declarado no nível (verde/triângulo,
- * `#3f8f5f`) porque `TUNING.palette.pairs` tem só os dois pares default; o
- * vermelho e o azul usam os pares do tuning.
+ * A fase é LEGÍVEL POR CONSTRUÇÃO: um trem tem a rota longa (o vermelho, um
+ * laço de 15 passos pelo topo/esquerda) e os outros dois são curtos e
+ * separados (azul 6, verde 6). As janelas são reais e espaçadas: o azul cruza
+ * o X no passo 3, o vermelho no 7 (4 passos); o verde usa o túnel nos passos
+ * 3–4 e o Y verde no 5; o vermelho usa o Y vermelho no 9. O primeiro quadro
+ * mostra DUAS previsões terminando em perigo (montanha no vermelho, vazio no
+ * verde): são os dois Ys para corrigir. O Y vermelho é a lição da montanha; o
+ * Y verde é a lição do braço errado.
  *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
  *       0  1  2  3  4  5
- *   0   >  c  v  .  .  .
- *   1   .  |  |  .  @  .
- *   2   .  c  X  -  Y  .
- *   3   .  .  |  .  M  #
- *   4   >  T  |  .  T  Y
- *   5   .  .  #  .  .  .
+ *   0   v  .  v  c  -  c
+ *   1   |  .  |  c  c  @
+ *   2   |  c  X  =  Y  .
+ *   3   c  c  |  .  M  #
+ *   4   c  T  |  .  T  Y
+ *   5   v  .  #  .  .  .
  *
- *   `>` entradas vermelha em (0,0) L e verde em (0,4) L; `v` entrada azul em
- *   (2,0) S. `@` estação vermelha/círculo em (4,1); `#` azul/quadrado em
- *   (2,5); `#` verde/triângulo em (5,3). `X` cruzamento em (2,2); `T` portais
- *   do túnel (1,4)↔(4,4); `M` montanha em (4,3); `Y` desvios em (4,2) e
- *   (5,4); `|` reta N–S; `-` reta E–O; `c` curva.
+ *   `v` entradas: vermelha em (0,0) SUL, azul em (2,0) SUL, verde em (0,5)
+ *   NORTE. `@` vermelha/círculo (5,1); `#` azul/quadrado (2,5); `#` verde/
+ *   triângulo (5,3). `X` cruzamento (2,2); `T` túneis (1,4)↔(4,4); `M` montanha
+ *   (4,3); `Y` desvios: vermelho em (4,2) rot 3 / arm 1 (S), verde em (5,4)
+ *   rot 3 / arm 1 (S). `|` reta N–S; `-` reta E–O; `=` reta E–O; `c` curva.
  *
- * TÚNEL
- *   Par horizontal alinhado (1,4)↔(4,4). O verde entra em (1,4) no passo 2,
- *   fica no portal, atravessa para (4,4) no passo 3 preservando a direção
- *   leste e sai para (5,4) no passo 4. A travessia custa um passo; o portal
- *   não é estação nem zona segura.
+ * O VERMELHO — laço longo e Y no meio da rota
+ *   (0,0) → (0,1) → (0,2) → (0,3) → (1,3) → (1,2) → X (2,2) → (3,2) →
+ *   Y (4,2) → (4,1) → (3,1) → (3,0) → (4,0) → (5,0) → @ (5,1) [15].
+ *   O Y vermelho é OBRIGATÓRIO: o braço 0 (N) leva a (4,1) e o laço; o braço 1
+ *   (S) cai na montanha (4,3). O Y nasce no braço 1 — a primeira previsão do
+ *   vermelho termina na montanha. O toque no Y (passo 9 ou antes) conserta.
  *
- * CRUZAMENTO
- *   (2,2), canais N–S (azul) e E–O (vermelho), sem ação. O azul cruza no
- *   passo 3; o vermelho no passo 5. A janela de 2 passos é folgada no rascunho
- *   (E19 aperta/expõe a colisão simultânea).
+ * O AZUL
+ *   (2,0) → (2,1) → X (2,2) → (2,3) → (2,4) → @ (2,5) [6]. Cruza o X no 3.
  *
- * MONTANHA
- *   (4,3), logo ao sul do Y vermelho (4,2). É o atalho tentador: com o braço
- *   sul ativo, o vermelho sai do Y direto na montanha no passo 8 e descarrila
- *   com `reason:'mountain'`; o braço norte leva a @ (4,1).
+ * O VERDE — túnel e Y de estação
+ *   (0,5) → (0,4) → T (1,4) → T (4,4) → Y (5,4) → @ (5,3) [6]. O Y verde nasce
+ *   arm 1 (S) e o braço S cai em (5,5) vazio; o toque troca para arm 0 (N) e o
+ *   verde entrega. O túnel custa a travessia do passo 3→4 (justTunneled).
+ *
+ * SOLUÇÃO DOCUMENTADA — 15 PASSOS (3/3, 3 vidas, 3 moedas)
+ *   1. toggle (5,4)  Y verde arm 1 (S) → 0 (N); os três entram.
+ *   2. passar        vermelho (0,1); azul (2,1); verde (0,4).
+ *   3. passar        vermelho (0,2); azul NO X (2,2) [moeda]; verde no portal
+ *                    (1,4).
+ *   4. passar        vermelho (0,3); azul (2,3); verde atravessa → (4,4).
+ *   5. passar        vermelho (1,3); azul (2,4); verde no Y (5,4).
+ *   6. passar        vermelho (1,2) [moeda]; azul em @ (2,5), ENTREGUE;
+ *                    verde em @ (5,3), ENTREGUE.
+ *   7. passar        vermelho NO X (2,2).
+ *   8. passar        vermelho (3,2) [moeda].
+ *   9. toggle (4,2)  Y vermelho arm 1 (S) → 0 (N); o vermelho entra no Y.
+ *  10. passar        vermelho (4,1).
+ *  11. passar        vermelho (3,1).
+ *  12. passar        vermelho (3,0).
+ *  13. passar        vermelho (4,0).
+ *  14. passar        vermelho (5,0).
+ *  15. passar        vermelho em @ (5,1); vitória 3/3.
+ *
+ *   Janelas: Y verde 1–5 (o verde entra no Y no 5); Y vermelho 1–9 (o vermelho
+ *   entra no 9); X azul 3 / vermelho 7 (4 passos); túnel verde 3–4; entregas
+ *   em 6/6/15. O vermelho é o único laço longo; a leitura de 3 trens fica
+ *   confortável (duas previsões curtas e uma longa).
+ *
+ *   Por que o toggle vermelho no 9: o Y nasce no braço fatal e o vermelho só
+ *   chega nele no 9. O jogador pode consertar antes (o braço fica); a solução
+ *   oficial demonstra a janela encadeada — verde cedo, vermelho na boca do Y.
+ *   O primeiro quadro já pinta a montanha; corrigir os dois Ys é a leitura.
+ *
+ * SACRIFÍCIO / FALHAS
+ *   - MONTANHA (vermelho, Y esquecido): sem o toggle (4,2), o vermelho entra no
+ *     Y com arm 1 (S) no passo 9 e descarrila em (4,3) por `mountain` no passo
+ *     10. Azul e verde já entregaram no 6 → `won` dinâmico 2/3 com 2 vidas e as
+ *     3 moedas (o vermelho coletou as duas do laço antes de morrer; o azul
+ *     coletou a do X). É a rota sacrificial documentada.
+ *   - Y VERDE ESQUECIDO: sem o toggle (5,4), o verde sai pelo braço S para
+ *     (5,5) vazio no passo 6 → `noExit`, uma vida; o vermelho entrega no 15 e
+ *     azul no 6 → `won` 2/3 com 2 vidas e 3 moedas.
+ *   - CRUZAMENTO SIMULTÂNEO: receita do §3.10 com o X real da fase — dois trens
+ *     na mesma célula do X no mesmo passo → colisão (1 vida, ambos perdem).
+ *     A receita fabricada usa o X (2,2) e as cores dos trens da fase.
+ *   - TÚNEL EM SENTIDOS OPOSTOS: receita do §3.10 com os portais reais — swap
+ *     (1,4)↔(4,4) no mesmo passo → colisão (1 vida, ambos perdem).
+ *   - `lost`: com 3 trens e 3 vidas, três perdas independentes zeram a run —
+ *     possível em conteúdo (azul noExit no 2 + verde sem toggle no 6 + vermelho
+ *     sem toggle no 10 → lives 0 → `lost` no 10). Na Densidade+ o laranja já
+ *     entregue não interfere; é o quarto trem que torna o `lost` mais fácil de
+ *     encenar.
  *
  * MOEDAS
- *   (1,2) na curva vermelha e (2,2) NO CRUZAMENTO — «perto do risco». O azul
- *   coleta a do cruzamento no passo 3; o vermelho coleta a da curva no 4.
- *   Contador burro, sem fórmula (D16).
- *
- * SOLUÇÃO DOCUMENTADA — 8 PASSOS (3/3, 3 vidas, 2 moedas)
- *   1. toggle (5,4)  Y verde arm 1→0 (S→N); os três trens entram.
- *   2. toggle (4,2)  Y vermelho arm 1→0 (S→N).
- *   3. passar        vermelho (1,1); azul no cruzamento (2,2) [moeda];
- *                    verde atravessa (1,4)→(4,4).
- *   4. passar        vermelho (1,2) [moeda]; azul (2,3); verde em (5,4).
- *   5. passar        vermelho no cruzamento (2,2); azul (2,4);
- *                    verde em @verde (5,3), ENTREGUE.
- *   6. passar        vermelho (3,2); azul em @azul (2,5), ENTREGUE.
- *   7. passar        vermelho no Y (4,2).
- *   8. passar        vermelho em @vermelho (4,1), ENTREGUE; vitória 3/3.
- *
- *   Caminhos:
- *   vermelho: (0,0) → (1,0) → (1,1) → (1,2) → X (2,2) [5] → (3,2) →
- *             Y (4,2) [7] → @ (4,1) [8].
- *   azul:     (2,0) → (2,1) → X (2,2) [3] → (2,3) → (2,4) → @ (2,5) [6].
- *   verde:    (0,4) → T (1,4) [2] → T (4,4) [3] → Y (5,4) [4] → @ (5,3) [5].
- *
- * ROTAS DE FALHA
- *   - MONTANHA (jogável): não fazer o toggle do Y vermelho (ou deixá-lo no
- *     braço S). No passo 7 o vermelho entra no Y com arm S; no 8 sai para
- *     (4,3) e descarrila `mountain` (1 vida). Azul/verde já entregues →
- *     vitória dinâmica 2/3 com 2 vidas.
- *   - CRUZAMENTO (simultâneo): o caso §3.10 é coberto no core com um
- *     cruzamento real (dois trens na mesma célula no mesmo passo → colisão
- *     geral, 1 vida). Para o E17 encenar no render: estado fabricado com um
- *     trem em (1,2) vindo do norte (indo S; a curva sai para L) e outro em
- *     (2,1) indo S, ambos com destino (2,2) no mesmo passo. No rascunho a
- *     janela é folgada; o E19 aperta a rota.
- *   - TÚNEL (sentidos opostos): o caso §3.10 é coberto no core com o par real
- *     (dois trens em portais opostos trocam A↔B no mesmo passo → swap →
- *     colisão). Para o E17: trem A no portal (1,4) indo L e B no portal
- *     (4,4) indo O, ambos atravessando no mesmo passo. O rascunho usa o túnel
- *     só no sentido verde; o E19 pode criar a segunda entrada.
- *   - Y VERDE ESQUECIDO: sem o toggle (5,4), o verde sai do Y para o sul
- *     (5,5), célula vazia, e descarrila `noExit` no passo 5.
+ *   (1,2) na curva vermelha, (2,2) NO cruzamento (lição Pipe Mania) e (3,2) na
+ *   reta antes do Y/montanha — «perto do risco». O azul coleta a do X no 3; o
+ *   vermelho as outras no 6 e no 8. Contador burro (D16).
  *
  * NOTAS
- *   - O rascunho exercita o fluxo completo dos três elementos: o verde
- *     atravessa o túnel, o azul e o vermelho cruzam em X em passos diferentes
- *     e o vermelho tem a montanha como atalho fatal. As colisões de túnel e
- *     cruzamento ficam no core (E16) até o E19 desenhar as janelas da fase
- *     definitiva.
- *   - 3 vidas (D7). O E16 prova `lost` com 3 trens/3 perdas fabricadas; o E19
- *     desenha a fase que torna o estado possível em conteúdo, sem torná-lo
- *     provável.
- *   - O tabuleiro tem 13 peças móveis (2 Ys, 1 cruzamento, 8 retas e 2
- *     curvas), 2 portais de túnel, 1 montanha, 3 estações e 2 moedas.
+ *   - 2 Ys (ambos usados, ambos com braço fatal), 1 X, 1 par de túneis, 1
+ *     montanha, 3 estações e 3 moedas. 6×6; todos entram no passo 1; 3 vidas;
+ *     sem hint novo (o primeiro quadro termina em estação/montanha/vazio;
+ *     `firstHintTarget` é null porque nenhuma previsão para em peça).
+ *   - A montanha é alcançável de propósito: só o braço S do Y vermelho leva a
+ *     ela. Sem essa rota o fixo seria decoração — a falha da montanha é a
+ *     lição de que o Y tem um braço que mata.
  */
 
 import type {
@@ -162,54 +176,50 @@ function mountain(): Cell {
 /**
  * Grade 6×6; `rows[row][col]`.
  *
- * Os dois Ys nascem com o braço S (arm 1) e a solução troca para N no primeiro
- * e no segundo passo. As demais peças já nascem alinhadas: o rascunho foca na
- * leitura dos três elementos novos, não em acumular giros.
+ * O vermelho nasce com o laço correto, mas com o Y no braço fatal (S); o verde
+ * nasce com o Y no braço errado (S); o azul nasce alinhado.
  */
 const board: Board = {
   width: 6,
   height: 6,
   rows: [
-    // Vermelho: (0,0) reta E–O de entrada, (1,0) curva L→S.
-    // Azul: (2,0) reta N–S de entrada.
-    [straight(1), curve(2), straight(0), EMPTY, EMPTY, EMPTY],
-    // Vermelho: (1,1) reta N–S. Azul: (2,1) reta N–S. @ vermelho (4,1).
-    [EMPTY, straight(0), straight(0), EMPTY, station(RED, RED_SHAPE), EMPTY],
-    // Vermelho: (1,2) curva S→L com moeda; X cruzamento (2,2) com moeda;
-    // (3,2) reta E–O; (4,2) Y vermelho rot 3 / arm 1 (S) inicial.
-    [EMPTY, curve(0), crossing(), straight(1), y(3, 1, 'toggle'), EMPTY],
-    // Azul: (2,3) reta N–S. Montanha (4,3). @ verde/triângulo (5,3).
-    [EMPTY, EMPTY, straight(0), EMPTY, mountain(), station(GREEN, GREEN_SHAPE)],
-    // Verde: (0,4) reta E–O de entrada; T (1,4)↔(4,4); azul (2,4) reta;
-    // (5,4) Y verde rot 3 / arm 1 (S) inicial.
-    [straight(1), tunnel({ col: 4, row: 4 }), straight(0), EMPTY, tunnel({ col: 1, row: 4 }), y(3, 1, 'toggle')],
-    // Azul: @ (2,5). O braço S do Y verde cai em (5,5), vazio (falha noExit).
-    [EMPTY, EMPTY, station(BLUE, BLUE_SHAPE), EMPTY, EMPTY, EMPTY],
+    // Vermelho: (0,0) entrada reta N–S; (3,0) curva S–E do laço;
+    // (4,0) reta E–O; (5,0) curva L–S. Azul: (2,0) entrada reta N–S.
+    [straight(0), EMPTY, straight(0), curve(1), straight(1), curve(2)],
+    // Vermelho: (0,1) reta N–S; (3,1) curva L–N; (4,1) curva S–L; @ (5,1).
+    // Azul: (2,1) reta N–S.
+    [straight(0), EMPTY, straight(0), curve(0), curve(2), station(RED, RED_SHAPE)],
+    // Vermelho: (0,2) reta N–S; (1,2) curva S–L; X (2,2); (3,2) reta E–O;
+    // Y vermelho (4,2) rot 3 / arm 1 (S) — arm 0 (N) é a rota, arm 1 = montanha.
+    [straight(0), curve(1), crossing(), straight(1), y(3, 1, 'toggle'), EMPTY],
+    // Vermelho: (0,3) curva S–L, (1,3) curva L–N; azul (2,3) reta N–S;
+    // montanha (4,3); @ verde/triângulo (5,3).
+    [curve(0), curve(3), straight(0), EMPTY, mountain(), station(GREEN, GREEN_SHAPE)],
+    // Verde: (0,4) curva S–L; T (1,4)↔(4,4); azul (2,4) reta; Y verde (5,4)
+    // rot 3 / arm 1 (S) inicial; arm 0 (N) leva a @ (5,3).
+    [curve(1), tunnel({ col: 4, row: 4 }), straight(0), EMPTY, tunnel({ col: 1, row: 4 }), y(3, 1, 'toggle')],
+    // Verde: (0,5) entrada reta N–S; @ azul (2,5); o braço S do Y verde cai
+    // em (5,5) vazio (falha noExit).
+    [straight(0), EMPTY, station(BLUE, BLUE_SHAPE), EMPTY, EMPTY, EMPTY],
   ],
 };
 
-/**
- * Fase P3 «Densidade» como dado puro (RASCUNHO).
- *
- * Entradas: vermelho (0,0)/L, azul (2,0)/S, verde (0,4)/L. O túnel liga os
- * dois lados da linha 4; o cruzamento é o encontro das rotas vermelha (E–O) e
- * azul (N–S); a montanha bloqueia o braço sul do Y vermelho.
- */
-export const P3_DRAFT: LevelLayout = {
-  id: 'p3-densidade-rascunho',
-  name: 'P3 — Densidade (rascunho)',
+export const P3_LEVEL: LevelLayout = {
+  id: 'p3-densidade',
+  name: 'P3 — Densidade',
   board,
   lives: 3,
   coins: [
     { col: 1, row: 2 },
     { col: 2, row: 2 },
+    { col: 3, row: 2 },
   ],
   trains: [
     {
       id: 'red',
       color: RED,
       shape: RED_SHAPE,
-      entry: { cell: { col: 0, row: 0 }, direction: 'east' },
+      entry: { cell: { col: 0, row: 0 }, direction: 'south' },
     },
     {
       id: 'blue',
@@ -221,7 +231,15 @@ export const P3_DRAFT: LevelLayout = {
       id: 'green',
       color: GREEN,
       shape: GREEN_SHAPE,
-      entry: { cell: { col: 0, row: 4 }, direction: 'east' },
+      entry: { cell: { col: 0, row: 5 }, direction: 'north' },
     },
   ],
 };
+
+/**
+ * Alias de compatibilidade para o teste de feel do E18 (`test/feel/p3-fx.test.ts`),
+ * que ainda importa o nome do rascunho. O tabuleiro é o definitivo e os dois
+ * portais do túnel continuam em (1,4)↔(4,4); o alias pode ser removido quando o
+ * orquestrador atualizar aquele teste para `P3_LEVEL`.
+ */
+export const P3_DRAFT = P3_LEVEL;
