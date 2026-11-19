@@ -114,7 +114,9 @@ export function tracePiecePath(
  * Reta: traço dos dois lados opostos (N–S canônico). Curva: arco de um quarto
  * de volta que encosta no canto entre os dois lados conectados (N–E canônico).
  * Y: três stubs + agulha clara no braço ativo; o lado fechado fica vazio.
- * `angleRad` permite o giro animado do E3.
+ * `angleRad` permite o giro animado do E3. `needleAngleRad` é o ângulo LOCAL
+ * da agulha (0 = braço 0, π = braço 1): o E8 o usa para varrer a agulha na
+ * troca de ponta sem girar os três stubs.
  */
 export function drawPiece(
   ctx: CanvasRenderingContext2D,
@@ -124,6 +126,7 @@ export function drawPiece(
   cell: number,
   color: string,
   angleRad?: number,
+  needleAngleRad?: number,
 ): void {
   const lineWidth = Math.max(MIN_TRACK_WIDTH, cell * TUNING.trackWidthRatio);
   const angle = angleRad ?? (piece.rot * Math.PI) / 2;
@@ -138,7 +141,7 @@ export function drawPiece(
   ctx.restore();
 
   if (piece.kind === 'y') {
-    drawYNeedle(ctx, piece, x, y, cell, color, lineWidth, angle);
+    drawYNeedle(ctx, piece, x, y, cell, color, lineWidth, angle, needleAngleRad);
   }
 }
 
@@ -149,6 +152,11 @@ export function drawPiece(
  * sumiria sobre os próprios stubs. Os três stubs continuam aceitando trem — a
  * agulha só comunica qual ponta o talo alcança agora. O pino escuro no centro
  * fecha o encontro dos stubs e dá a leitura de eixo do desvio.
+ *
+ * `needleAngleRad` é local à peça: 0 aponta ao braço 0, π ao braço 1. A
+ * varredura animada do E8 passa pelo lado FECHADO (+π/2): a lâmina cruza o
+ * vazio em vez de varrer por cima do talo, então nunca parece que o tronco
+ * virou a rota ativa. Sem override, a agulha fica no braço do snapshot.
  */
 function drawYNeedle(
   ctx: CanvasRenderingContext2D,
@@ -159,21 +167,23 @@ function drawYNeedle(
   color: string,
   trackWidth: number,
   angle: number,
+  needleAngleRad?: number,
 ): void {
   const cx = x + cell / 2;
   const cy = y + cell / 2;
   const length = cell * TUNING.yNeedleRatio;
   const base = Math.max(MIN_TRACK_WIDTH, trackWidth * 0.52);
-  const direction = piece.arm === 0 ? 1 : -1;
+  const localAngle = needleAngleRad ?? (piece.arm === 0 ? 0 : Math.PI);
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(angle);
+  ctx.rotate(localAngle);
 
-  // Lâmina em forma de cunha: base no pino, ponta no canal ativo.
+  // Lâmina em forma de cunha: base no pino, ponta no canal ativo (+x local).
   ctx.beginPath();
   ctx.moveTo(0, -base);
-  ctx.lineTo(direction * length, 0);
+  ctx.lineTo(length, 0);
   ctx.lineTo(0, base);
   ctx.closePath();
   ctx.fillStyle = TUNING.palette.background;

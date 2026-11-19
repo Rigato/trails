@@ -5,8 +5,9 @@
  * (GDD §5) e a entrada é marcada na borda apontando para dentro (GDD §3.4).
  *
  * O E3 acrescenta dois ganchos de animação, ambos opcionais: o ângulo contínuo
- * de uma peça girando e a escala da estação durante o pulse de entrega. O
- * estado continua sendo o snapshot do core; os overrides só existem no quadro.
+ * de uma peça girando e a escala da estação durante o pulse de entrega. O E8
+ * acrescenta um terceiro: o ângulo local da agulha do Y no toggle. O estado
+ * continua sendo o snapshot do core; os overrides só existem no quadro.
  */
 
 import type { Board, Entry, Station } from '../core/types';
@@ -26,9 +27,10 @@ const GRID_LINE_WIDTH = 1;
  * A ordem importa: peças por cima das linhas; a estação e a entrada são
  * elementos fixos e nunca giram.
  *
- * `pieceAngles` mapeia `cellKey` → ângulo em radianos (giro animado) e
- * `stationScales` mapeia `cellKey` → escala (pulse de entrega). Mapas ausentes
- * ou vazios desenham o estado repousado.
+ * `pieceAngles` mapeia `cellKey` → ângulo em radianos (giro animado),
+ * `stationScales` mapeia `cellKey` → escala (pulse de entrega) e
+ * `needleAngles` mapeia `cellKey` → ângulo local da agulha do Y (toggle
+ * animado do E8). Mapas ausentes ou vazios desenham o estado repousado.
  */
 export function drawBoard(
   ctx: CanvasRenderingContext2D,
@@ -36,6 +38,7 @@ export function drawBoard(
   board: Board,
   pieceAngles?: ReadonlyMap<string, number>,
   stationScales?: ReadonlyMap<string, number>,
+  needleAngles?: ReadonlyMap<string, number>,
 ): void {
   drawGrid(ctx, layout);
 
@@ -60,6 +63,7 @@ export function drawBoard(
           layout.cell,
           PALETTE.track,
           pieceAngles?.get(key),
+          needleAngles?.get(key),
         );
       } else if (content.kind === 'fixed') {
         if (content.fixed.kind === 'station') {

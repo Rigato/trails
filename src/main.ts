@@ -1,5 +1,6 @@
 /**
- * Boot do protótipo P0 «Contrato» e costura render ↔ input ↔ core.
+ * Boot do protótipo Trails (P0 «Contrato» → P1 «Sincronia») e costura
+ * render ↔ input ↔ core.
  *
  * O core é a única autoridade de regra e aplica cada ação instantaneamente. A
  * apresentação (este arquivo) guarda o snapshot anterior só para animar:
@@ -11,10 +12,13 @@
  * 3. quando o passo visual termina, o buffer drena a próxima ação (com
  *    `bufferedStepGapMs` de pausa extra, default 0 = passos encadeados);
  * 4. um único `requestAnimationFrame` desenha tudo e mantém a marcha da
- *    previsão viva mesmo com o jogo parado.
+ *    previsão viva mesmo com o jogo parado;
+ * 5. E8: o toggle do Y anima só a agulha (`yToggleMs`) e cada vida perdida
+ *    pulsa a marca no HUD (`lifeLostPulseMs`), no mesmo relógio.
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
- * redesenhar — nenhuma ação de uma run morta sobrevive (D1/D5).
+ * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
+ * valor do layout (D1/D5/D7).
  */
 
 import { TUNING } from './config/tuning';
@@ -38,13 +42,18 @@ import { attachPointerInput } from './input/pointer';
 import { PHASES } from './level';
 import {
   CELL_FLASH_MS,
+  derailVisuals,
   easeStep,
   firstHintTarget,
+  lifeLostMarkIndices,
   rotationProgress,
   stationPulseScale,
+  yNeedleSweepAngle,
   type CellFlash,
   type DeliveryPulse,
   type DerailExit,
+  type DerailVisual,
+  type LifeLostPulse,
 } from './render/fx';
 import { cellCenter, computeLayout, type SceneLayout } from './render/layout';
 import { drawScene, type TrainView } from './render/scene';
@@ -76,16 +85,20 @@ interface StepAnimation {
     readonly from: Piece;
     readonly to: Piece;
   } | null;
+  /** Troca de ponta do Y: os três stubs ficam parados; só a agulha varre. */
+  readonly toggle: {
+    readonly cell: CellPos;
+    readonly fromArm: 0 | 1;
+    readonly toArm: 0 | 1;
+  } | null;
   readonly moves: readonly MoveAnimation[];
   readonly deliveries: readonly {
     readonly station: CellPos;
     readonly color: Color;
   }[];
-  readonly derails: readonly {
-    readonly train: Train;
-    readonly at: CellPos;
-    readonly direction: Direction;
-  }[];
+  readonly derails: readonly DerailVisual[];
+  /** Índices das marcas de vida esvaziadas neste passo (E8). */
+  readonly lifeLostMarks: readonly number[];
 }
 
 function requiredElement<T extends Element>(selector: string): T {
@@ -143,6 +156,7 @@ let layout: SceneLayout = computeLayout(1, 1, game.state.board);
 let flashes: CellFlash[] = [];
 let pulses: DeliveryPulse[] = [];
 let exits: DerailExit[] = [];
+let lifePulses: LifeLostPulse[] = [];
 
 /** O jogo terminou (vitória, «sem trem ativo» de D1 ou derrota D7)? */
 function isFinished(): boolean {
@@ -207,8 +221,8 @@ function trainHeading(train: Train): Direction {
  *
  * `trainMoved` dá origem/destino; `trainDelivered`/`trainDerailed` guardam o
  * trem do snapshot anterior (ele sai da `GameState` no mesmo instante). Trens
- * ativos sem evento de movimento continuam visíveis parados — o P0 não tem
- * esse caso, mas o render não deve depender disso.
+ * ativos sem evento de movimento continuam visíveis parados — o conteúdo atual
+ * não tem esse caso, mas o render não deve depender disso.
  */
 function buildStepAnimation(
   previous: GameState,
@@ -222,13 +236,23 @@ function buildStepAnimation(
 
   const moves = new Map<TrainId, MoveAnimation>();
   let rotation: StepAnimation['rotation'] = null;
+  let toggle: StepAnimation['toggle'] = null;
   const deliveries: { station: CellPos; color: Color }[] = [];
-  const derails: { train: Train; at: CellPos; direction: Direction }[] = [];
 
   for (const event of result.events) {
     switch (event.kind) {
       case 'pieceRotated':
         rotation = { cell: event.cell, from: event.from, to: event.to };
+        break;
+
+      case 'pieceToggled':
+        if (event.from.kind === 'y' && event.to.kind === 'y') {
+          toggle = {
+            cell: event.cell,
+            fromArm: event.from.arm,
+            toArm: event.to.arm,
+          };
+        }
         break;
 
       case 'trainMoved': {
@@ -262,26 +286,21 @@ function buildStepAnimation(
         break;
       }
 
-      case 'trainDerailed': {
-        const train = previousById.get(event.trainId);
-
-        if (train !== undefined) {
-          derails.push({ train, at: event.at, direction: event.direction });
-        }
+      case 'trainDerailed':
+        // Os fantasmas saem de `derailVisuals` (um por evento, inclusive os
+        // DOIS participantes de uma colisão).
         break;
-      }
 
       case 'collision':
       case 'lifeLost':
       case 'victory':
       case 'deadEnd':
         break;
-
-      case 'pieceToggled':
-        // E7 desenha o estado instantâneo; a animação da agulha é E8.
-        break;
     }
   }
+
+  const derails = derailVisuals(result.events, previous.trains);
+  const lifeLostMarks = lifeLostMarkIndices(result.events);
 
   for (const train of previous.trains) {
     if (moves.has(train.id)) {
@@ -307,9 +326,11 @@ function buildStepAnimation(
     startedAt,
     endsAt: startedAt + Math.max(0, TUNING.stepDurationMs),
     rotation,
+    toggle,
     moves: [...moves.values()],
     deliveries,
     derails,
+    lifeLostMarks,
   };
 }
 
@@ -413,6 +434,12 @@ function finishStep(now: number): void {
     });
   }
 
+  // Cada marca esvaziada pulsa quando o trem termina de sair (step.endsAt),
+  // junto com o fantasma: a perda e a consequência visual batem no mesmo quadro.
+  for (const markIndex of step.lifeLostMarks) {
+    lifePulses.push({ markIndex, startedAt: step.endsAt });
+  }
+
   if (isFinished()) {
     // A run acabou: ações enfileiradas durante o último passo não pertencem a
     // nenhuma próxima run.
@@ -462,6 +489,7 @@ function onReset(): void {
   flashes = [];
   pulses = [];
   exits = [];
+  lifePulses = [];
   game.reset();
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
@@ -485,6 +513,7 @@ function loadPhase(index: number): void {
   flashes = [];
   pulses = [];
   exits = [];
+  lifePulses = [];
   phaseIndex = index;
   level = next;
   game = setup(level);
@@ -598,6 +627,40 @@ function buildPieceAngles(now: number): ReadonlyMap<string, number> | undefined 
   return new Map([[cellKey(rotation.cell), base + progress * (Math.PI / 2)]]);
 }
 
+/**
+ * Ângulo local da agulha no toggle do Y (E8).
+ *
+ * Os três stubs não giram; só a lâmina varre do braço antigo ao novo, pelo
+ * lado fechado. A varredura dura `yToggleMs` (120), dentro do passo de 180 —
+ * depois disso a agulha fica no braço do snapshot e o mapa some. Os dois
+ * ângulos são locais à peça: a rotação do Y continua sendo o outro caminho
+ * (`pieceAngles`).
+ */
+function buildNeedleAngles(now: number): ReadonlyMap<string, number> | undefined {
+  const toggle = animation?.toggle;
+
+  if (animation === null || toggle === null || toggle === undefined) {
+    return undefined;
+  }
+
+  const duration = Math.max(
+    1,
+    Math.min(TUNING.yToggleMs, TUNING.stepDurationMs),
+  );
+  const progress = (now - animation.startedAt) / duration;
+
+  if (progress >= 1) {
+    return undefined;
+  }
+
+  return new Map([
+    [
+      cellKey(toggle.cell),
+      yNeedleSweepAngle(toggle.fromArm, toggle.toArm, progress),
+    ],
+  ]);
+}
+
 /** Escala do corpo da estação durante o pulse de entrega (D5). */
 function buildStationScales(now: number): ReadonlyMap<string, number> | undefined {
   if (pulses.length === 0) {
@@ -629,6 +692,9 @@ function pruneFeedback(now: number): void {
   exits = exits.filter(
     (exit) => now - exit.startedAt < TUNING.derailExitMs,
   );
+  lifePulses = lifePulses.filter(
+    (pulse) => now - pulse.startedAt < TUNING.lifeLostPulseMs,
+  );
 }
 
 /** Desenha um quadro inteiro a partir do relógio. */
@@ -645,10 +711,12 @@ function draw(now: number): void {
     trains: buildTrainViews(now),
     pieceAngles: buildPieceAngles(now),
     stationScales: buildStationScales(now),
+    needleAngles: buildNeedleAngles(now),
     firstHint,
     flashes,
     pulses,
     exits,
+    lifePulses,
   });
 }
 
@@ -734,6 +802,8 @@ declare global {
       readonly pendingStepAt: number | null;
       /** Peça do hint do primeiro frame (D6); `null` depois da 1ª ação válida. */
       readonly firstHint: CellPos | null;
+      /** Marcas de vida que ainda pulsam (E8), com índice e início. */
+      readonly lifePulses: readonly LifeLostPulse[];
       /** Início/fim do passo visual em andamento (QA de duração). */
       readonly stepStartedAt: number | null;
       readonly stepEndsAt: number | null;
@@ -777,6 +847,9 @@ window.__trailsDebug = {
   },
   get firstHint() {
     return firstHint;
+  },
+  get lifePulses() {
+    return lifePulses;
   },
   get stepStartedAt() {
     return animation?.startedAt ?? null;

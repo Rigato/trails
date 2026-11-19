@@ -8,11 +8,18 @@
  *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
- * O pulse da perda é E8; aqui a marca só reflete o snapshot.
+ * E8: a marca que acabou de esvaziar pulsa (cresce + anel, `lifeLostPulseMs`),
+ * ancorada no relógio do loop; duas perdas no mesmo passo = duas marcas.
  */
 
 import type { GameState } from '../core/types';
 import { TUNING } from '../config/tuning';
+import {
+  lifePulseProgress,
+  lifePulseRing,
+  lifePulseScale,
+  type LifeLostPulse,
+} from './fx';
 import type { Rect, SceneLayout } from './layout';
 
 const PALETTE = TUNING.palette;
@@ -26,6 +33,10 @@ export interface HudContext {
   readonly livesTotal: number | null;
   /** A fase atual tem sucessora? Decide «Próxima fase» vs. «Jogar de novo». */
   readonly hasNextPhase: boolean;
+  /** Relógio do quadro — anima o pulse das marcas de vida (E8). */
+  readonly now: number;
+  /** Marcas que acabaram de esvaziar e ainda pulsam (E8). */
+  readonly lifePulses: readonly LifeLostPulse[];
 }
 
 /**
@@ -52,7 +63,7 @@ export function drawHud(
   levelName: string,
   context: HudContext,
 ): void {
-  drawHeader(ctx, layout, state, levelName, context.livesTotal);
+  drawHeader(ctx, layout, state, levelName, context);
 
   if (isEnded(state)) {
     const winner = state.trains.find((train) => train.status.kind === 'delivered');
@@ -97,7 +108,7 @@ function drawHeader(
   layout: SceneLayout,
   state: GameState,
   levelName: string,
-  livesTotal: number | null,
+  context: HudContext,
 ): void {
   const { header, headerFontSize } = layout;
 
@@ -119,8 +130,15 @@ function drawHeader(
   );
   ctx.restore();
 
-  if (livesTotal !== null && livesTotal > 0) {
-    drawLifeMarks(ctx, layout, state.lives ?? 0, livesTotal);
+  if (context.livesTotal !== null && context.livesTotal > 0) {
+    drawLifeMarks(
+      ctx,
+      layout,
+      state.lives ?? 0,
+      context.livesTotal,
+      context.now,
+      context.lifePulses,
+    );
   }
 }
 
@@ -145,12 +163,20 @@ function statusLabel(state: GameState): string {
  *
  * Diamantes pequenos (não os símbolos dos pares) mantêm o HUD neutro em cor e
  * legível em DPR 1; a quantidade total vem da fase, o saldo do snapshot.
+ *
+ * E8: a marca que acabou de esvaziar pulsa — cresce e volta, com um anel na
+ * cor do trilho expandindo e sumindo (`lifeLostPulseMs`). O índice vem do
+ * `remaining` do evento `lifeLost` (marcas `0..remaining-1` seguem cheias), então
+ * duas perdas no mesmo passo fazem DUAS marcas pulsarem. O pulse é ancorado no
+ * relógio do loop, como os demais fx.
  */
 function drawLifeMarks(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
   current: number,
   total: number,
+  now: number,
+  pulses: readonly LifeLostPulse[],
 ): void {
   const size = Math.max(6, layout.headerFontSize * 0.55);
   const gap = size * 0.55;
@@ -163,12 +189,37 @@ function drawLifeMarks(
 
   for (let index = 0; index < total; index += 1) {
     const cx = startX + index * (size + gap);
+    const pulse = pulses.find((candidate) => candidate.markIndex === index);
+    const progress = pulse === undefined ? 1 : lifePulseProgress(pulse, now);
+    const pulsing = pulse !== undefined && progress < 1;
+    const scale = pulsing ? lifePulseScale(progress) : 1;
+
+    // Anel de perda: atrás da marca, na cor do trilho, expande e desaparece.
+    if (pulsing) {
+      const ring = lifePulseRing(progress);
+
+      ctx.save();
+      ctx.globalAlpha = ring.alpha;
+      ctx.strokeStyle = PALETTE.track;
+      ctx.lineWidth = Math.max(1, size * 0.14);
+      ctx.beginPath();
+      ctx.arc(cx, cy, size * ring.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    if (scale !== 1) {
+      ctx.scale(scale, scale);
+    }
 
     ctx.beginPath();
-    ctx.moveTo(cx, cy - size / 2);
-    ctx.lineTo(cx + size / 2, cy);
-    ctx.lineTo(cx, cy + size / 2);
-    ctx.lineTo(cx - size / 2, cy);
+    ctx.moveTo(0, -size / 2);
+    ctx.lineTo(size / 2, 0);
+    ctx.lineTo(0, size / 2);
+    ctx.lineTo(-size / 2, 0);
     ctx.closePath();
 
     if (index < alive) {
@@ -176,11 +227,15 @@ function drawLifeMarks(
       ctx.fillStyle = PALETTE.track;
       ctx.fill();
     } else {
-      ctx.globalAlpha = EMPTY_LIFE_ALPHA;
+      ctx.globalAlpha = pulsing
+        ? 0.55 + 0.4 * (1 - progress)
+        : EMPTY_LIFE_ALPHA;
       ctx.strokeStyle = PALETTE.track;
       ctx.lineWidth = Math.max(1, size * 0.16);
       ctx.stroke();
     }
+
+    ctx.restore();
   }
 
   ctx.restore();

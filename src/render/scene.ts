@@ -24,6 +24,7 @@ import {
   type CellFlash,
   type DeliveryPulse,
   type DerailExit,
+  type LifeLostPulse,
 } from './fx';
 import { drawHud } from './hud';
 import type { SceneLayout } from './layout';
@@ -58,11 +59,15 @@ export interface Scene {
   readonly trains: readonly TrainView[];
   readonly pieceAngles?: ReadonlyMap<string, number>;
   readonly stationScales?: ReadonlyMap<string, number>;
+  /** Ângulo local da agulha do Y no toggle animado (E8). */
+  readonly needleAngles?: ReadonlyMap<string, number>;
   /** Peça do primeiro giro que pulsa até a primeira ação válida (D6). */
   readonly firstHint?: CellPos | null;
   readonly flashes: readonly CellFlash[];
   readonly pulses: readonly DeliveryPulse[];
   readonly exits: readonly DerailExit[];
+  /** Marcas de vida que acabaram de esvaziar (E8). */
+  readonly lifePulses: readonly LifeLostPulse[];
 }
 
 /** Desenha um quadro inteiro. */
@@ -77,7 +82,7 @@ export function drawScene(
   ctx.fillStyle = PALETTE.background;
   ctx.fillRect(0, 0, layout.width, layout.height);
 
-  drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales);
+  drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales, scene.needleAngles);
 
   // D6: o halo fica SOB a previsão — o traço e o marcador de parada continuam
   // sendo a leitura principal; o anel só enquadra a peça do primeiro giro.
@@ -138,6 +143,8 @@ export function drawScene(
   drawHud(ctx, layout, state, scene.levelName, {
     livesTotal: scene.livesTotal,
     hasNextPhase: scene.hasNextPhase,
+    now,
+    lifePulses: scene.lifePulses,
   });
   ctx.restore();
 }

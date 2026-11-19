@@ -1,25 +1,28 @@
 /**
- * Feel do passo: matemática de animação e feedbacks visuais (E3).
+ * Feel do passo: matemática de animação e feedbacks visuais (E3/E8).
  *
  * Este módulo concentra o que é «sensação» e não é regra: curvas de tempo,
  * flashes de toque sem ação (D3), pulse de entrega (D5), saída do trem
- * descarrilado (D1) e o halo do primeiro giro (D6). Tudo é função de `now` —
- * nenhum estado escondido, nenhum timer próprio — para o loop único de
- * `main.ts` desenhar qualquer quadro a partir do mesmo relógio.
+ * descarrilado (D1), halo do primeiro giro (D6), varredura da agulha do Y e
+ * pulse da marca de vida perdida (E8). Tudo é função de `now` — nenhum estado
+ * escondido, nenhum timer próprio — para o loop único de `main.ts` desenhar
+ * qualquer quadro a partir do mesmo relógio.
  *
- * A duração de cada efeito vem de `config/tuning.ts`; aqui só vivem as curvas
- * e o traço. O flash usa uma constante curta (o suficiente para confirmar o
- * toque sem ensinar por ruído); o halo do D6 respira no período
- * `firstHintPulseMs` e tem opacidades fixas e discretas.
+ * A duração de cada efeito vem de `config/tuning.ts` (`yToggleMs`,
+ * `lifeLostPulseMs`); aqui só vivem as curvas e o traço. O flash usa uma
+ * constante curta (o suficiente para confirmar o toque sem ensinar por ruído);
+ * o halo do D6 respira no período `firstHintPulseMs`.
  */
 
 import type {
   CellPos,
   Color,
   Direction,
+  GameEvent,
   GameState,
   Prediction,
   Train,
+  TrainId,
 } from '../core/types';
 import { cellAt, directionOffset } from '../core/types';
 import type { StepEasing } from '../config/tuning';
@@ -147,6 +150,68 @@ export interface DerailExit {
   readonly startedAt: number;
 }
 
+/** Trem que descarrilou num passo, antes de virar fantasma com `startedAt`. */
+export interface DerailVisual {
+  readonly train: Train;
+  readonly at: CellPos;
+  readonly direction: Direction;
+}
+
+/**
+ * Um fantasma por `trainDerailed` — inclusive DOIS na colisão (o core emite um
+ * evento por participante). A ordem é a dos eventos; a cena desenha todos.
+ */
+export function derailVisuals(
+  events: readonly GameEvent[],
+  trains: readonly Train[],
+): DerailVisual[] {
+  const byId = new Map<TrainId, Train>(trains.map((train) => [train.id, train]));
+  const visuals: DerailVisual[] = [];
+
+  for (const event of events) {
+    if (event.kind !== 'trainDerailed') {
+      continue;
+    }
+
+    const train = byId.get(event.trainId);
+
+    if (train !== undefined) {
+      visuals.push({ train, at: event.at, direction: event.direction });
+    }
+  }
+
+  return visuals;
+}
+
+/** Marca de vida que acabou de esvaziar no HUD (E8). */
+export interface LifeLostPulse {
+  /**
+   * Índice da marca (0 = primeira). É o `remaining` do evento `lifeLost`: as
+   * marcas `0..remaining-1` continuam cheias; a que esvaziou é a `remaining`.
+   */
+  readonly markIndex: number;
+  readonly startedAt: number;
+}
+
+/**
+ * Índices das marcas que esvaziaram num passo, na ordem dos eventos.
+ *
+ * Duas perdas no mesmo passo geram dois índices (e duas marcas pulsando): as
+ * colisões custam uma vida por evento; dois descarrilamentos independentes
+ * custam uma cada (D7).
+ */
+export function lifeLostMarkIndices(events: readonly GameEvent[]): number[] {
+  const indices: number[] = [];
+
+  for (const event of events) {
+    if (event.kind === 'lifeLost') {
+      indices.push(event.remaining);
+    }
+  }
+
+  return indices;
+}
+
 /** Limita um número ao intervalo [0, 1]. */
 export function clamp01(value: number): number {
   if (!Number.isFinite(value)) {
@@ -216,6 +281,31 @@ export function rotationProgress(t: number, overshoot: number): number {
   return peak + (1 - peak) * easeOutQuad(settle);
 }
 
+/**
+ * Ângulo LOCAL da agulha do Y durante um toggle (E8), em [0, π].
+ *
+ * 0 = braço 0 (leste canônico), π = braço 1 (oeste canônico). A varredura
+ * escolhida passa pelo lado FECHADO (local +π/2): a lâmina cruza o vazio em
+ * vez de varrer por cima do talo, então nunca parece que o tronco virou a rota
+ * ativa. `easeOutQuad` — o toggle é curto e seco, sem o sobregiro do giro da
+ * peça. O passo de 180 ms continua; a agulha termina em `yToggleMs` (120).
+ */
+export function yNeedleSweepAngle(
+  fromArm: 0 | 1,
+  toArm: 0 | 1,
+  progress: number,
+): number {
+  const start = fromArm === 0 ? 0 : Math.PI;
+
+  if (fromArm === toArm) {
+    return start;
+  }
+
+  const eased = easeOutQuad(clamp01(progress));
+
+  return start === 0 ? Math.PI * eased : Math.PI * (1 - eased);
+}
+
 /** Intensidade do flash (1 no toque, 0 no fim); curva quadrática discreta. */
 export function flashIntensity(
   flash: CellFlash,
@@ -248,6 +338,40 @@ export function stationPulseScale(progress: number, peak = TUNING.deliverPulseSc
 export function pulseProgress(pulse: DeliveryPulse, now: number): number {
   const duration = Math.max(1, TUNING.deliverPulseMs);
   return clamp01((now - pulse.startedAt) / duration);
+}
+
+/** Progresso do pulse da marca de vida perdida em [0, 1]. */
+export function lifePulseProgress(pulse: LifeLostPulse, now: number): number {
+  const duration = Math.max(1, TUNING.lifeLostPulseMs);
+  return clamp01((now - pulse.startedAt) / duration);
+}
+
+/**
+ * Escala da marca de vida durante o pulse de perda.
+ *
+ * Sobe de 1 até 1,55 no meio e volta a 1 — a marca vazia «pula» uma vez para
+ * o olho achar a vida que acabou de sair, sem tocar no texto do HUD.
+ */
+export function lifePulseScale(progress: number): number {
+  return 1 + 0.55 * Math.sin(Math.PI * clamp01(progress));
+}
+
+/**
+ * Anel do pulse de vida, em múltiplos do tamanho da marca.
+ *
+ * O anel expande de 0,55× até 1,6× e some; fica no cabeçalho, na cor do
+ * trilho, sem competir com as marcas vizinhas.
+ */
+export function lifePulseRing(progress: number): {
+  readonly radius: number;
+  readonly alpha: number;
+} {
+  const t = clamp01(progress);
+
+  return {
+    radius: 0.55 + 1.05 * easeOutCubic(t),
+    alpha: 0.55 * (1 - easeOutQuad(t)),
+  };
 }
 
 /** Progresso da saída do trem descarrilado em [0, 1]. */
