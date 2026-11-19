@@ -1,144 +1,157 @@
 /**
- * Fase P2 «Obstáculos» — RASCUNHO (E11).
+ * Fase P2 «Obstáculos» — layout DEFINITIVO (E14).
  *
- * ATENÇÃO: este layout é RASCUNHO para validar rio/ponte/moedas no motor e
- * destravar o render (E12). O layout definitivo é do E14/SA4 e pode mudar
- * peças, coordenadas e solução sem tocar no core.
- *
- * 6×6, 2 trens (vermelho/círculo e azul/quadrado), 3 vidas. A fase introduz o
- * primeiro elemento que PUNE: um rio vertical na coluna 3, com uma única
- * ponte fixa em (3,2). Quem chega à água descarrila com `reason: 'water'`; a
- * previsão para na água com marcador próprio (E12).
+ * 6×6, 2 trens (vermelho/círculo e azul/quadrado), 2 estações, 3 vidas e
+ * moedas como contador burro (D16). O rascunho do SA1 provava rio/ponte/moedas
+ * no motor, mas o rio col. 3 atravessava a grade inteira: os dois trens eram
+ * forçados ao mesmo corredor e a fase virava um corredor único. Aqui o rio
+ * continua cruzando as rotas, mas termina antes das bordas: a ponte é o
+ * desvio central e as pontas do rio são a rota alternativa. As duas entradas
+ * ficam em bordas com folga (topo e fundo), então os trens esperando fora da
+ * grade são visíveis no primeiro quadro.
  *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
  *       0  1  2  3  4  5
- *   0   .  .  c  ~  .  .
- *   1   >  o  c  ~  .  @
- *   2   .  .  Y  =  -  Y
- *   3   .  c  c  ~  .  #
- *   4   .  o  c  ~  .  .
- *   5   .  c  Y  ~  .  .
- *             ^
+ *   0   v  c  c  .  .  .
+ *   1   c  c  |  ~  .  @
+ *   2   c  c  Y  =  -  Y
+ *   3   |  c  c  ~  c  #
+ *   4   c  c  c  ~  c  c
+ *   5   .  c  Y  -  -  c
  *
- *   `>` marcador vermelho na borda oeste de (0,1); a célula é reta E–O.
- *   `^` marcador azul na borda sul de (2,5); a célula é um Y de entrada.
+ *   `v` entrada vermelha SUL na primeira célula (0,0), reta N–S.
+ *   `^` entrada azul NORTE na primeira célula (2,5), Y (D13: a entrada é peça).
  *   `@` estação vermelha/círculo em (5,1); `#` azul/quadrado em (5,3).
- *   `o` moeda sobre trilho (reta E–O em (1,1), reta N–S em (1,4)).
- *   `~` rio; `=` ponte fixa E–O em (3,2); `-` reta E–O; `c` curva; `Y` Y.
- *
- * ENTRADAS (modelo off-board)
- *   Vermelho: `{ cell: (0,1), direction: 'east' }`, reta alinhada.
- *   Azul: `{ cell: (2,5), direction: 'north' }`, Y. O trem espera FORA da
- *   grade, abaixo de (2,5), e o primeiro toque pode girar/trocar a peça de
- *   entrada. Aqui a peça de entrada é o próprio risco: com `arm 1` o Y manda
- *   o trem para leste, direto na água em (3,5). O primeiro toque (toggle)
- *   troca para `arm 0` e o azul segue para oeste. A previsão do primeiro
- *   quadro já mostra a água — é o aviso do Pilar 3.
+ *   `~` água; `=` ponte E–O em (3,2); `|` reta N–S; `-` reta E–O; `c` curva;
+ *   `Y` desvio. O topo do rio (3,0) é vazio; o fundo (3,5) é trilho E–O.
  *
  * RIO E PONTE
- *   Banda vertical: (3,0)..(3,5), única ponte (3,2) com eixo E–O (perpendicular
- *   à banda). A ponte não gira e comporta um trem por vez; o vermelho atravessa
- *   no passo 5 e o azul no 7, sem disputa. A validação do setup aceita esta
- *   banda: componente 4-conexo reto, ≥1 rio, exatamente 1 ponte, eixo
- *   perpendicular.
+ *   Banda vertical (3,1),(3,2),(3,3),(3,4): três águas e a ponte (3,2), eixo
+ *   E–O (perpendicular à banda). A banda NÃO chega às bordas: (3,0) é vazio e
+ *   (3,5) é trilho. A ponte é o cruzamento central; a ponta de baixo é a rota
+ *   alternativa (azul leste).
  *
- * MOEDAS (overlay; contador burro)
- *   (1,1) no corredor vermelho, (1,4) no corredor azul e (3,2) NA PONTE —
- *   «perto do risco». A moeda da ponte é coletada pelo primeiro trem que
- *   atravessa (o vermelho, no passo 5); quando o azul passa no 7 ela já saiu,
- *   então o contador termina em 3, não 4. Sem fórmula, sem sink (D16).
+ * AS DUAS ROTAS DO AZUL (a escolha real da fase)
+ *   - OESTE/PONTE (oficial): o Y de entrada em (2,5) fica arm 0 (O); o azul
+ *     faz o laço Oeste (1,5)→(1,4)→(0,4)→(0,3)→(0,2)→(1,2)→(1,3)→(2,3),
+ *     entra no merge (2,2), atravessa a ponte (3,2), segue (4,2) e chega ao
+ *     split (5,2) no passo 13. O split precisa de arm 1 (S) para # (5,3) — a
+ *     janela do P1, agora cobrada depois da ponte. Custo: 14 passos; coleta 5
+ *     moedas (1,1), (3,2), (1,4), (0,4), (1,2).
+ *   - LESTE/PONTA (atalho): o primeiro toque no Y de entrada troca para arm 1
+ *     (L); o azul contorna a ponta de baixo do rio por (3,5)→(4,5)→(5,5)→
+ *     (5,4)→(4,4)→(4,3) e entra em # direto, sem merge/ponte/split. Custo: o
+ *     vermelho entrega no passo 11; o azul no 8; a fase fecha em 11 passos e
+ *     coleta 3 moedas (1,1), (3,2), (4,4). Menos 3 passos, menos 2 moedas.
  *
- * SOLUÇÃO DOCUMENTADA — 10 PASSOS (2/2, 3 vidas, 3 moedas)
- *   1. toggle (2,5)   arm 1→0 (E→O); os dois trens entram nas entradas.
- *   2. rotate (2,1)   curva vermelha rot 1→2 (L→S), a tempo do passo 3.
- *   3. rotate (1,3)   curva azul rot 0→1 (S→L), a tempo do passo 4.
- *   4. rotate (4,2)   reta compartilhada rot 0→1 (N–S→E–O).
- *   5. rotate (2,3)   curva azul rot 2→3 (L→N), a tempo do passo 5.
- *   6. passar
- *   7. passar
- *   8. passar         vermelho entrega em @ (5,1).
- *   9. toggle (5,2)   split arm 0→1 (N→S); o azul está em (4,2), célula livre.
- *  10. passar         azul entrega em # (5,3); vitória 2/2.
+ * ROTA OESTE — SOLUÇÃO DOCUMENTADA (14 passos, 2/2, 3 vidas, 5 moedas)
+ *   1. rotate (2,3)  curva rot 2 (S–O) → 3 (O–N); conserta a água do azul.
+ *                     vermelho em (0,0); azul em (2,5) (os dois entram).
+ *   2. passar        vermelho em (0,1); azul em (1,5).
+ *   3. passar        vermelho em (1,1) [moeda]; azul em (1,4) [moeda].
+ *   4. passar        vermelho em (1,0); azul em (0,4) [moeda].
+ *   5. passar        vermelho em (2,0); azul em (0,3).
+ *   6. passar        vermelho em (2,1); azul em (0,2).
+ *   7. passar        vermelho no merge (2,2); azul em (1,2) [moeda].
+ *   8. passar        vermelho na ponte (3,2) [moeda]; azul em (1,3).
+ *   9. passar        vermelho em (4,2); azul em (2,3).
+ *  10. passar        vermelho no split (5,2); azul no merge (2,2).
+ *  11. passar        vermelho em @ (5,1), ENTREGUE; azul na ponte (3,2).
+ *  12. passar        azul em (4,2).
+ *  13. toggle (5,2)  split arm 0 (N) → 1 (S): rearma para o azul.
+ *  14. passar        azul em # (5,3), ENTREGUE; vitória 2/2.
  *
- *   Fim de cada passo (posições dos trens; o orquestrador lê isto):
- *   passo 0: vermelho waiting (0,1)/L; azul waiting (2,5)/N.
- *            previsão vermelha: sem saída em (2,1); azul: ÁGUA em (3,5).
- *   passo 1: vermelho (0,1); azul (2,5) [Y já em arm 0].
- *   passo 2: vermelho (1,1) [moeda]; azul (1,5).
- *   passo 3: vermelho (2,1); azul (1,4) [moeda].
- *   passo 4: vermelho (2,2) merge; azul (1,3).
- *   passo 5: vermelho (3,2) ponte [moeda]; azul (2,3).
- *   passo 6: vermelho (4,2); azul (2,2) merge.
- *   passo 7: vermelho (5,2) split; azul (3,2) ponte.
- *   passo 8: vermelho @ ENTREGUE; azul (4,2).
- *   passo 9: azul (5,2) split [arm 1].
- *   passo 10: azul # ENTREGUE; vitória 2/2, vidas 3, moedas 3.
+ *   O vermelho é o trilho de referência: a rota dele nasce CORRETA (a primeira
+ *   previsão já termina em @, sem hint D6). A dificuldade é do azul. O split é
+ *   ocupado pelo vermelho no passo 10; ele só sai no 11; o primeiro toque
+ *   livre é depois disso, e o azul chega no 13. A janela de S é de 3 passos
+ *   (vermelho 10, azul 13) e a da ponte também (vermelho 8, azul 11).
+ *   Um toggle cedo no split (para "ajudar" o azul) manda o vermelho para # no
+ *   passo 11 — wrongStation e o vermelho morre; o azul ainda entrega no 14 e
+ *   a vitória dinâmica fecha 1/2 com 2 vidas. Esperar é o movimento correto
+ *   (Q5): a fase paga a paciência.
  *
- * ROTAS DE FALHA (o que o E12 pode encenar)
- *   - ÁGUA (azul, natural): não fazer o toggle da entrada. O azul entra em
- *     (2,5) com arm 1 e no passo 2 sai para (3,5) — `water`, uma vida. A
- *     previsão do passo 0 já termina na água. Com 3 vidas a run continua e o
- *     vermelho ainda entrega; a vitória é dinâmica (1/2).
- *   - ÁGUA (azul, desvio ignorado): não girar (2,3) de rot 2→3. O azul chega
- *     em (2,3) vindo de oeste, a curva rot 2 manda para o sul (2,4); a rampa
- *     (2,4) rot 0 (N→L) joga o trem em (3,4) — `water`.
- *   - ÁGUA (vermelho, excesso de giro): girar (2,1) DUAS vezes (rot 1→2→3)
- *     antes do passo 3. A rot 3 (L→N) sobe para (2,0); a rampa (2,0) rot 1
- *     (S→L) joga o trem em (3,0) — `water`.
- *   - SEM SAÍDA (vermelho, giro esquecido): (2,1) fica rot 1 (L–S, não aceita
- *     entrada pelo oeste); o trem para em (2,1) com `noExit` no passo 3.
- *   - SEM SAÍDA (azul, giro esquecido): (1,3) fica rot 0 (N–L, não aceita
- *     entrada pelo sul); o trem para em (1,3) com `noExit`.
- *   - ESTAÇÃO ERRADA (split esquecido): sem o toggle do passo 9, o azul sai
- *     do split para o norte e chega em @ (5,1) — `wrongStation`, uma vida;
- *     vermelho já entregue, então a vitória dinâmica ainda fecha 1/2 com 2
- *     vidas. É a rota sacrificial documentada.
+ *   Caminhos:
+ *   vermelho: (0,0) → (0,1) → (1,1) → (1,0) → (2,0) → (2,1) → merge (2,2)
+ *             [7] → ponte (3,2) [8] → (4,2) [9] → split (5,2) [10] →
+ *             @ (5,1) [11].
+ *   azul:     (2,5) → (1,5) → (1,4) → (0,4) → (0,3) → (0,2) → (1,2) →
+ *             (1,3) → (2,3) → merge (2,2) [10] → ponte (3,2) [11] →
+ *             (4,2) [12] → split [13] → # (5,3) [14].
  *
- * NOTAS
- *   - As rampas (2,0) e (2,4) são decoys de FALHA, não decoração: só são
- *     alcançadas por giro errado/excessivo e existem para produzir `water`
- *     de forma concreta (E12). Fora dessas rotas, a previsão nunca as toca.
- *   - 3 vidas (D7). Com 2 trens o máximo é 2 eventos de dano, então `lost` é
- *     inalcançável nesta fase; o contrato de `lost` continua testado no core
- *     com 3 trens fabricados. `won`, `deadEnd` e a vitória dinâmica são os
- *     fins reais.
- *   - O tabuleiro tem 13 peças móveis (11 em rotas + 2 rampas de falha), 5
- *     células de rio, 1 ponte e 2 estações.
+ *   ATENÇÃO: os números de passo da tabela são o passo RESOLVIDO (o snapshot
+ *   depois da ação). O vermelho entra em (0,0) no passo 1 e chega em @ no 11;
+ *   a solução oficial tem 14 ações porque o azul chega ao split no 13 e a #
+ *   no 14. O primeiro toque é a rotação (2,3); o resto é espera.
+ *
+ *   Custos comparados (a escolha):
+ *   rota oeste/ponte: 14 ações, 5 moedas, exige a rotação (2,3) + o rearme do
+ *   split; a ponte é o cruzamento central e a moeda da ponte é do vermelho.
+ *   rota leste/ponta: 11 ações, 3 moedas, exige só o toggle da entrada; o azul
+ *   contorna a água pela ponta de baixo (3,5), sem merge/ponte/split.
+ *
+ * FALHAS E SACRIFÍCIO
+ *   - ÁGUA (azul, ignorar o desvio): sem a rotação (2,3), o azul entra em
+ *     (2,3) rot 2, desce para (2,4) e a rampa N–L o joga em (3,4) — `water`,
+ *     uma vida, no passo 11. A previsão do primeiro quadro já termina na água.
+ *     O vermelho entrega no mesmo passo → vitória dinâmica 1/2 com 2 vidas e
+ *     as 5 moedas já coletadas (a moeda do azul conta mesmo morrendo, D16).
+ *   - ESTAÇÃO ERRADA (azul, ignorar a janela): com a rotação (2,3) mas sem o
+ *     toggle do passo 13, o azul entra no split com arm 0 (N), sai para @
+ *     (5,1) e descarrila por cor no passo 14 — `won` 1/2, 2 vidas, 5 moedas.
+ *     É a rota sacrificial: o vermelho já entregou; o azul morre na estação
+ *     errada; a vitória dinâmica (§3.7) ainda fecha.
+ *   - TOGGLE CEDO (Q5): tocar o split no passo 1 (ou antes do vermelho sair)
+ *     manda o VERMELHO para # no passo 11 — wrongStation; o azul usa o split
+ *     já em S e entrega no 14; 1/2 com 2 vidas. A ânsia de "resolver o azul
+ *     logo" mata o vermelho; esperar é a jogada certa. É a provocação de Q5.
+ *   - ROTA LESTE SEM TOGGLE: sem o toggle da entrada, o azul fica no laço
+ *     oeste e o primeiro quadro já termina na água; a rota leste só existe
+ *     depois do toggle. O jogador precisa escolher uma das rotas.
+ *
+ *   Não há colisão no conteúdo: a ponte é usada pelo vermelho (passo 8) e pelo
+ *   azul oeste (passo 11), com 3 passos de diferença; o split repete a janela
+ *   (vermelho 10, azul 13). A falha da janela é `wrongStation`, não colisão; a
+ *   colisão com 2 trens fica fora do conteúdo e o estado `lost` continua
+ *   inalcançável (máximo 2 eventos de perda), como o plano §2.2 registra.
+ *   `deadEnd` e `won` dinâmico são os fins reais. Com 3 trens o `lost` seria
+ *   alcançável, mas a densidade da grade de 6×6 com rio + ponte + duas rotas +
+ *   6 moedas não paga: 3 trens aqui viraria o teste de densidade do P3, não o
+ *   experimento Q2/Q5.
+ *
+ *   DECOYS: nenhuma peça fora de rota. As 6 moedas estão em trilho/bridge;
+ *   (1,1) é a moeda fácil do vermelho (exceção), (3,2) é a moeda da ponte,
+ *   (1,4)/(0,4)/(1,2) pagam o laço oeste e (4,4) paga o atalho leste.
  */
 
 import type {
   Board,
   Cell,
   Color,
+  Direction,
   LevelLayout,
   Rotation,
   Shape,
 } from '../core/types';
+import { TUNING } from '../config/tuning';
 
-/** Par vermelho do P0/P1. */
-const RED: Color = '#d64545';
-
-/** Par azul do P1. */
-const BLUE: Color = '#2f6fb0';
+const RED: Color = TUNING.palette.pairs[0];
+const BLUE: Color = TUNING.palette.pairs[1];
 
 const RED_SHAPE: Shape = 'circle';
 const BLUE_SHAPE: Shape = 'square';
 
-/** Célula vazia compartilhada — o core nunca muta o dado da fase. */
 const EMPTY: Cell = { kind: 'empty' };
 
-/** Célula com reta; `rot` é o quarto de volta CW a partir de norte–sul. */
 function straight(rot: Rotation): Cell {
   return { kind: 'piece', piece: { kind: 'straight', rot } };
 }
 
-/** Célula com curva; `rot` é o quarto de volta CW a partir de norte–leste. */
 function curve(rot: Rotation): Cell {
   return { kind: 'piece', piece: { kind: 'curve', rot } };
 }
 
-/** Célula com Y; `arm` é relativo à peça e `next` começa sempre `toggle`. */
 function y(
   rot: Rotation,
   arm: 0 | 1,
@@ -147,81 +160,71 @@ function y(
   return { kind: 'piece', piece: { kind: 'y', rot, arm, next } };
 }
 
-/** Estação de um par cor+forma. */
 function station(color: Color, shape: Shape): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
 }
 
-/** Célula de água da banda de rio. */
 function river(): Cell {
   return { kind: 'fixed', fixed: { kind: 'river' } };
 }
 
-/** Célula de ponte fixa; `axis` é o sentido da travessia. */
 function bridge(axis: 'east-west' | 'north-south'): Cell {
   return { kind: 'fixed', fixed: { kind: 'bridge', axis } };
 }
 
-/**
- * Grade 6×6; `rows[row][col]`.
- *
- * Orientações iniciais = correta menos um quarto de volta CW nas quatro peças
- * que a solução gira; as demais já nascem alinhadas. O Y azul de entrada nasce
- * no braço errado (arm 1 = leste, água); o split nasce no braço do vermelho.
- */
+/** Entrada off-board (D13): a primeira célula é uma peça comum. */
+function entry(cell: { col: number; row: number }, direction: Direction) {
+  return { cell, direction };
+}
+
 const board: Board = {
   width: 6,
   height: 6,
   rows: [
-    // (2,0) rampa de falha do vermelho: S→L, deságua em (3,0).
-    [EMPTY, EMPTY, curve(1), river(), EMPTY, EMPTY],
-    // Vermelho: (0,1) reta E–O de entrada, (1,1) reta E–O com moeda,
-    // (2,1) curva inicial rot 1 (L–S) → correta rot 2 (S–O); @ em (5,1).
-    [straight(1), straight(1), curve(1), river(), EMPTY, station(RED, RED_SHAPE)],
-    // Merge (2,2) talo L / braços N–S; ponte (3,2) E–O; reta (4,2) inicial
-    // rot 0 (N–S) → correta rot 1 (E–O); split (5,2) talo O / braços N–S.
-    [EMPTY, EMPTY, y(1, 0, 'toggle'), bridge('east-west'), straight(0), y(3, 0, 'toggle')],
-    // Azul: (1,3) curva inicial rot 0 (N–L) → correta rot 1 (S–L);
-    // (2,3) curva inicial rot 2 (S–O) → correta rot 3 (O–N); # em (5,3).
-    [EMPTY, curve(0), curve(2), river(), EMPTY, station(BLUE, BLUE_SHAPE)],
-    // Azul: (1,4) reta N–S com moeda; (2,4) rampa de falha N→L, água em (3,4).
-    [EMPTY, straight(0), curve(0), river(), EMPTY, EMPTY],
-    // Azul: (1,5) curva E→N; (2,5) Y de entrada rot 2 (talo S, braços L/O),
-    // inicial arm 1 (LESTE = água) → o primeiro toggle escolhe OESTE.
-    [EMPTY, curve(0), y(2, 1, 'toggle'), river(), EMPTY, EMPTY],
+    // Entrada vermelha no topo; laço superior do vermelho. Topo do rio vazio.
+    [straight(0), curve(1), curve(2), EMPTY, EMPTY, EMPTY],
+    // Vermelho: (0,1) curva S–L; (1,1) curva O–N; (2,1) reta N–S; @ (5,1).
+    [curve(0), curve(3), straight(0), river(), EMPTY, station(RED, RED_SHAPE)],
+    // Azul oeste: (0,2) curva S–L, (1,2) curva S–O; merge (2,2);
+    // ponte (3,2); (4,2) reta E–O; split (5,2).
+    [curve(1), curve(2), y(1, 0, 'toggle'), bridge('east-west'), straight(1), y(3, 0, 'toggle')],
+    // Azul oeste: (0,3) reta N–S, (1,3) curva N–L, (2,3) curva O–N inicial
+    // rot 2; atalho leste: (4,3) curva S–L; # (5,3).
+    [straight(0), curve(0), curve(2), river(), curve(1), station(BLUE, BLUE_SHAPE)],
+    // Azul oeste: (0,4) curva L–N, (1,4) curva S–O; rampa (2,4) N–L;
+    // atalho leste: (4,4) curva L–N, (5,4) curva S–O.
+    [curve(0), curve(2), curve(0), river(), curve(0), curve(2)],
+    // Azul oeste: (1,5) curva O–N; Y de entrada (2,5) talo S / braços O–L;
+    // atalho leste: (3,5) e (4,5) retas E–O; (5,5) curva O–N.
+    [EMPTY, curve(0), y(2, 0, 'toggle'), straight(1), straight(1), curve(3)],
   ],
 };
 
-/**
- * Fase P2 «Obstáculos» como dado puro (RASCUNHO).
- *
- * O vermelho entra pela borda oeste em (0,1) indo leste; o azul entra pela
- * borda sul em (2,5) subindo. As duas rotas se encontram no merge (2,2),
- * atravessam a única ponte (3,2) e se separam no split (5,2). As entradas são
- * células de trilho comuns (reta e Y), não elementos fixos.
- */
-export const P2_DRAFT: LevelLayout = {
-  id: 'p2-obstaculos-rascunho',
-  name: 'P2 — Obstáculos (rascunho)',
+export const P2_LEVEL: LevelLayout = {
+  id: 'p2-obstaculos',
+  name: 'P2 — Obstáculos',
   board,
   lives: 3,
   coins: [
     { col: 1, row: 1 },
-    { col: 1, row: 4 },
     { col: 3, row: 2 },
+    { col: 1, row: 4 },
+    { col: 0, row: 4 },
+    { col: 1, row: 2 },
+    { col: 4, row: 4 },
   ],
   trains: [
     {
       id: 'red',
       color: RED,
       shape: RED_SHAPE,
-      entry: { cell: { col: 0, row: 1 }, direction: 'east' },
+      entry: entry({ col: 0, row: 0 }, 'south'),
     },
     {
       id: 'blue',
       color: BLUE,
       shape: BLUE_SHAPE,
-      entry: { cell: { col: 2, row: 5 }, direction: 'north' },
+      entry: entry({ col: 2, row: 5 }, 'north'),
     },
   ],
 };
