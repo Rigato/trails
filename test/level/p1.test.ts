@@ -124,14 +124,28 @@ describe('P1 — fase «Sincronia» (layout definitivo)', () => {
       fixed: { kind: 'station', color: blue.color, shape: blue.shape },
     });
 
-    // Entradas distintas na borda, apontando para dentro.
+    // Primeiras células de entrada: trilho comum na borda, não elemento fixo.
     expect(cellAt(board, pos(0, 5))).toEqual({
-      kind: 'fixed',
-      fixed: { kind: 'entry', direction: 'north' },
+      kind: 'piece',
+      piece: { kind: 'straight', rot: 0 },
     });
     expect(cellAt(board, pos(5, 4))).toEqual({
-      kind: 'fixed',
-      fixed: { kind: 'entry', direction: 'west' },
+      kind: 'piece',
+      piece: { kind: 'straight', rot: 1 },
+    });
+
+    const redEntry = P1_LEVEL.trains.find((train) => train.id === 'red')?.entry;
+    const blueEntry = P1_LEVEL.trains.find(
+      (train) => train.id === 'blue',
+    )?.entry;
+
+    expect(redEntry).toEqual({
+      cell: pos(0, 5),
+      direction: 'north',
+    });
+    expect(blueEntry).toEqual({
+      cell: pos(5, 4),
+      direction: 'west',
     });
 
     const yCount = board.rows.flat().reduce(

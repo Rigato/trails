@@ -42,7 +42,7 @@ function syncCorridor() {
     ]),
     [
       trainSetup('red', RED, 'circle', pos(0, 0)),
-      trainSetup('blue', BLUE, 'square', pos(4, 1)),
+      trainSetup('blue', BLUE, 'square', pos(4, 1), 'west'),
     ],
   );
 }

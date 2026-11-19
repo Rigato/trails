@@ -13,7 +13,7 @@ import {
   resolveCell,
   ySides,
 } from '../../src/core/movement';
-import { EMPTY, entry, station, straight, y } from './helpers';
+import { EMPTY, station, straight, y } from './helpers';
 
 describe('movement — reta', () => {
   it('rot 0 e 2 conectam norte–sul', () => {
@@ -191,14 +191,5 @@ describe('resolveCell', () => {
 
   it('estação é um ponto de parada, não uma passagem', () => {
     expect(resolveCell(station(), 'east')).toEqual({ kind: 'station' });
-  });
-
-  it('entrada só aceita o trem viajando para dentro', () => {
-    expect(resolveCell(entry('east'), 'east')).toEqual({
-      kind: 'exit',
-      direction: 'east',
-    });
-    expect(resolveCell(entry('east'), 'north')).toEqual({ kind: 'noExit' });
-    expect(resolveCell(entry('east'), 'west')).toEqual({ kind: 'noExit' });
   });
 });

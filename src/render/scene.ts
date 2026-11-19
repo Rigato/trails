@@ -9,6 +9,7 @@
 
 import type {
   CellPos,
+  EntryPoint,
   GameState,
   Prediction,
   Train,
@@ -54,6 +55,8 @@ export interface Scene {
   readonly livesTotal: number | null;
   /** A fase atual tem sucessora? D10 decide o rótulo do botão final. */
   readonly hasNextPhase: boolean;
+  /** Entradas da fase: marcadores de borda derivados do layout. */
+  readonly entries: readonly EntryPoint[];
   /** Relógio do quadro, em ms — marcha da previsão e lifecycles dos feedbacks. */
   readonly now: number;
   readonly trains: readonly TrainView[];
@@ -82,7 +85,7 @@ export function drawScene(
   ctx.fillStyle = PALETTE.background;
   ctx.fillRect(0, 0, layout.width, layout.height);
 
-  drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales, scene.needleAngles);
+  drawBoard(ctx, layout, state.board, scene.pieceAngles, scene.stationScales, scene.needleAngles, scene.entries);
 
   const trainsById = new Map<TrainId, Train>();
   for (const train of state.trains) {

@@ -3,7 +3,7 @@
  *
  * Este módulo concentra o que é «sensação» e não é regra: curvas de tempo,
  * flashes de toque sem ação (D3), pulse de entrega (D5), saída do trem
- * descarrilado (D1), halo do primeiro giro (D6), varredura da agulha do Y e
+ * descarrilado (D1), halo do primeiro giro (D6), varredura da seta do Y e
  * pulse da marca de vida perdida (E8). Tudo é função de `now` — nenhum estado
  * escondido, nenhum timer próprio — para o loop único de `main.ts` desenhar
  * qualquer quadro a partir do mesmo relógio.
@@ -282,13 +282,15 @@ export function rotationProgress(t: number, overshoot: number): number {
 }
 
 /**
- * Ângulo LOCAL da agulha do Y durante um toggle (E8), em [0, π].
+ * Ângulo LOCAL do canal ativo do Y durante um toggle, em [0, π].
  *
  * 0 = braço 0 (leste canônico), π = braço 1 (oeste canônico). A varredura
- * escolhida passa pelo lado FECHADO (local +π/2): a lâmina cruza o vazio em
- * vez de varrer por cima do talo, então nunca parece que o tronco virou a rota
- * ativa. `easeOutQuad` — o toggle é curto e seco, sem o sobregiro do giro da
- * peça. O passo de 180 ms continua; a agulha termina em `yToggleMs` (120).
+ * escolhida passa pelo lado FECHADO (local +π/2): a seta e o realce cruzam o
+ * vazio em vez de varrer por cima do talo, então nunca parece que o tronco
+ * virou a rota ativa. `easeOutQuad` — o toggle é curto e seco, sem o sobregiro
+ * do giro da peça. O passo de 180 ms continua; a seta termina em `yToggleMs`
+ * (120). O nome `yNeedleSweepAngle` fica por compatibilidade com a costura do
+ * E8; a indicação desenhada é a seta da rota + canal ativo.
  */
 export function yNeedleSweepAngle(
   fromArm: 0 | 1,

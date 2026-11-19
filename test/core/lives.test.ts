@@ -34,7 +34,7 @@ describe('vidas — custo por evento', () => {
       ]),
       [
         trainSetup('a', RED, 'circle', pos(0, 1)),
-        trainSetup('b', BLUE, 'square', pos(2, 1)),
+        trainSetup('b', BLUE, 'square', pos(2, 1), 'west'),
       ],
       3,
     );
@@ -149,7 +149,7 @@ describe('vidas — custo por evento', () => {
       ]),
       [
         trainSetup('a', RED, 'circle', pos(0, 1)),
-        trainSetup('b', BLUE, 'square', pos(2, 1)),
+        trainSetup('b', BLUE, 'square', pos(2, 1), 'west'),
       ],
       3,
     );

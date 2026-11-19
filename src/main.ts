@@ -35,7 +35,7 @@ import type {
   Train,
   TrainId,
 } from './core/types';
-import { cellKey } from './core/types';
+import { cellKey, directionOffset, opposite } from './core/types';
 import { ActionBuffer } from './core/buffer';
 import { setup } from './core/game';
 import { attachPointerInput } from './input/pointer';
@@ -68,12 +68,11 @@ const MAX_DPR = 2;
 /** Trem em animação de um passo: posição/ângulo de origem e destino. */
 interface MoveAnimation {
   readonly train: Train;
+  /** `null` no primeiro passo: origem é o ponto externo de espera. */
   readonly from: CellPos | null;
   readonly to: CellPos;
   readonly fromDirection: Direction;
   readonly toDirection: Direction;
-  /** Primeiro passo: o trem entra pela célula de entrada (pop, sem deslize). */
-  readonly entering: boolean;
 }
 
 /** Um passo em andamento: o snapshot antigo virou dados de interpolação. */
@@ -272,7 +271,6 @@ function buildStepAnimation(
             event.from === null
               ? heading
               : (directionBetween(event.from, event.to) ?? heading),
-          entering: event.from === null,
         });
         break;
       }
@@ -317,7 +315,6 @@ function buildStepAnimation(
         to: status.cell,
         fromDirection: heading,
         toDirection: heading,
-        entering: false,
       });
     }
   }
@@ -550,6 +547,24 @@ function lerpAngle(from: number, to: number, t: number): number {
   return from + delta * t;
 }
 
+/**
+ * Centro visual de um trem `waiting`: uma célula atrás de `entry.cell`, contra
+ * a direção de entrada — fora da grade. É o ponto de espera; o primeiro passo
+ * desliza daqui até o centro da primeira célula de trilho.
+ */
+function waitingCenter(status: {
+  readonly cell: CellPos;
+  readonly direction: Direction;
+}): { readonly x: number; readonly y: number } {
+  const center = cellCenter(layout, status.cell);
+  const outward = directionOffset(opposite(status.direction));
+
+  return {
+    x: center.x + outward.col * layout.cell,
+    y: center.y + outward.row * layout.cell,
+  };
+}
+
 /** Posições visuais dos trens no quadro: animação ou repouso. */
 function buildTrainViews(now: number): TrainView[] {
   const views: TrainView[] = [];
@@ -562,9 +577,11 @@ function buildTrainViews(now: number): TrainView[] {
     );
 
     for (const move of animation.moves) {
-      const from = cellCenter(layout, move.from ?? move.to);
+      const from =
+        move.from === null && move.train.status.kind === 'waiting'
+          ? waitingCenter(move.train.status)
+          : cellCenter(layout, move.from ?? move.to);
       const to = cellCenter(layout, move.to);
-      const enteringScale = move.entering ? 1 + 0.1 * (1 - progress) : 1;
 
       views.push({
         train: move.train,
@@ -575,7 +592,7 @@ function buildTrainViews(now: number): TrainView[] {
           directionAngle(move.toDirection),
           progress,
         ),
-        scale: enteringScale,
+        scale: 1,
         alpha: 1,
       });
     }
@@ -590,7 +607,10 @@ function buildTrainViews(now: number): TrainView[] {
       continue;
     }
 
-    const center = cellCenter(layout, status.cell);
+    const center =
+      status.kind === 'waiting'
+        ? waitingCenter(status)
+        : cellCenter(layout, status.cell);
     const heading = status.kind === 'waiting' ? status.direction : status.incoming;
 
     views.push({
@@ -707,6 +727,7 @@ function draw(now: number): void {
     levelName: level.name,
     livesTotal: level.lives ?? null,
     hasNextPhase: hasNextPhase(),
+    entries: level.trains.map((train) => train.entry),
     now,
     trains: buildTrainViews(now),
     pieceAngles: buildPieceAngles(now),

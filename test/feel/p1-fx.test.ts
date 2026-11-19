@@ -73,7 +73,7 @@ describe('tuning do P1 — parâmetros vivos (E8)', () => {
   });
 });
 
-describe('agulha do Y — varredura do toggle (E8)', () => {
+describe('seta do Y — varredura do toggle (E8, revisão pós-playtest)', () => {
   it('começa no braço antigo e termina no novo', () => {
     expect(yNeedleSweepAngle(0, 1, 0)).toBe(0);
     expect(yNeedleSweepAngle(0, 1, 1)).toBeCloseTo(Math.PI);

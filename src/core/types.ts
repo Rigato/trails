@@ -149,31 +149,33 @@ export interface Station {
 }
 
 /**
- * Entrada de locomotiva: elemento fixo na borda da grade.
+ * Entrada de locomotiva: marcador de borda + primeira célula da grade.
  *
- * `direction` é a direção com que o trem entra na grade, apontando para
- * dentro. Exemplo: entrada na coluna 0 (borda oeste) com
- * `direction: 'east'`. O primeiro passo coloca o trem nesta célula; o passo
- * seguinte o move para `col + 1`. A célula de entrada não contém peça.
+ * O GDD §3.4 sempre definiu a entrada como um **ponto marcado na borda**, não
+ * como uma célula fixa. `cell` é a primeira célula DENTRO da grade — a que o
+ * trem pisa no primeiro passo — e `direction` é o sentido de entrada,
+ * perpendicular à borda e apontando para dentro. A célula deve conter uma peça
+ * de trilho comum (reta, curva ou, futuramente, Y), que o jogador pode girar
+ * enquanto o trem espera.
  *
- * Regra de movimento: a entrada não é uma peça de dois lados. Um trem que
- * chega de fora viaja na direção `direction` e sai por ela; qualquer outra
- * direção de entrada é bloqueada (trem voltando para a borda pelo lado
- * errado). O estado `waiting` já carrega essa direção.
+ * O trem começa fora da grade (`waiting`), desenhado visualmente uma célula
+ * atrás de `cell` no sentido oposto a `direction`; o passo 1 o coloca em
+ * `cell` sem resolver a chegada, e o passo 2 resolve a peça dali. O marcador na
+ * borda é derivado pelo render; não existe mais um tipo de célula `entry`.
  */
-export interface Entry {
-  readonly kind: 'entry';
+export interface EntryPoint {
+  readonly cell: CellPos;
   readonly direction: Direction;
 }
 
 /**
  * Elemento fixo de uma célula.
  *
- * Rio, ponte, túnel e montanha (P2/P3) entram como novas variantes desta
- * união, com um case novo em `movement.ts`/`step.ts` e no render — sem mexer
- * no formato das células existentes.
+ * Hoje só a estação. Rio, ponte, túnel e montanha (P2/P3) entram como novas
+ * variantes desta união, com case novo em `movement.ts`/`step.ts` e no render —
+ * sem mexer no formato das células existentes.
  */
-export type Fixed = Station | Entry;
+export type Fixed = Station;
 
 /** Célula vazia: nada transponível; trem que chega descarrila. */
 export interface EmptyCell {
@@ -186,7 +188,7 @@ export interface PieceCell {
   readonly piece: Piece;
 }
 
-/** Célula com elemento fixo (estação, entrada, futuros rio/túnel...). */
+/** Célula com elemento fixo (hoje estação; futuros rio/túnel...). */
 export interface FixedCell {
   readonly kind: 'fixed';
   readonly fixed: Fixed;
@@ -222,8 +224,8 @@ export type TrainId = string;
  * Motivo de descarrilamento (GDD §3.6).
  *
  * - `offBoard`: saiu da grade por uma borda;
- * - `noExit`: chegou a uma célula sem saída (vazia, peça sem conexão para a
- *   direção de entrada, ou entrada acessada no sentido errado);
+ * - `noExit`: chegou a uma célula sem saída (vazia ou peça sem conexão para a
+ *   direção de entrada);
  * - `wrongStation`: chegou a uma estação de cor diferente da sua;
  * - `collision`: colisão com outra locomotiva (mesma célula no mesmo passo ou
  *   troca de células no mesmo passo).
@@ -233,9 +235,9 @@ export type DerailReason = 'offBoard' | 'noExit' | 'wrongStation' | 'collision';
 /**
  * Estado de uma locomotiva.
  *
- * - `waiting`: ainda fora da grade, prestes a entrar pela célula `cell` na
- *   direção `direction` (GDD §3.5). Não ocupa `cell` para toque nem colisão
- *   até o primeiro passo.
+ * - `waiting`: ainda fora da grade, prestes a pisar em `cell` (a primeira
+ *   célula de trilho) viajando na direção `direction` (GDD §3.5). Não ocupa
+ *   `cell` para toque nem colisão até o primeiro passo.
  * - `running`: dentro da grade, ocupando `cell`. `incoming` é a direção de
  *   deslocamento com que o trem entrou na célula — a «direção de entrada» da
  *   tabela de movimento e da detecção de loop (§3.8). O lado da peça por onde
@@ -274,24 +276,26 @@ export interface Train {
 /**
  * Configuração de uma locomotiva no dado da fase.
  *
- * `entry` deve apontar para uma célula `fixed` do tipo `entry` na borda;
- * cada trem usa uma entrada distinta. O trem começa `waiting` e só passa a
- * ocupar a célula de entrada no primeiro passo.
+ * `entry.cell` deve ser uma célula de trilho (peça móvel) na borda;
+ * `entry.direction` aponta para dentro, perpendicular àquela borda. Cada trem
+ * usa uma primeira célula distinta. O trem começa `waiting` FORA da grade e o
+ * primeiro passo o coloca em `entry.cell`; a peça só é resolvida no passo
+ * seguinte.
  */
 export interface TrainSetup {
   readonly id: TrainId;
   readonly color: Color;
   readonly shape: Shape;
-  readonly entry: CellPos;
+  readonly entry: EntryPoint;
 }
 
 /**
  * Fase como dado puro.
  *
  * O motor não conhece nenhuma fase específica: `P0` é só um valor deste tipo
- * (`level/p0.ts`). Integridade (entrada na borda apontando para dentro, uma
- * estação por cor, etc.) é validada no setup do jogo; o dado é editável sem
- * tocar no motor.
+ * (`level/p0.ts`). Integridade (primeira célula de entrada na borda apontando
+ * para dentro e contendo trilho, uma estação por cor, etc.) é validada no setup
+ * do jogo; o dado é editável sem tocar no motor.
  *
  * `lives` ausente = fase sem vidas (D1 tutorial: a falha não existe como
  * estado/custo). Quando presente, deve ser um inteiro ≥ 1 — validado no
@@ -323,7 +327,7 @@ export type Action =
  * Motivo de toque nulo — toque registrado, mas que não é ação (§3.3).
  *
  * - `empty`: célula vazia;
- * - `fixed`: estação ou entrada (elemento fixo);
+ * - `fixed`: elemento fixo (hoje a estação); não é ação;
  * - `outOfBounds`: coordenada fora da grade.
  */
 export type NullTapReason = 'empty' | 'fixed' | 'outOfBounds';
@@ -372,9 +376,10 @@ export type ActionOutcome =
  * `collision`/`trainDerailed` (colisões e descarrilamentos) → `lifeLost`
  * (consequência) → `victory`/`deadEnd` (fim de jogo).
  *
- * `trainMoved.from === null` significa entrada na grade pela célula de
- * entrada. `trainMoved` só é emitido para destino dentro da grade; saída pela
- * borda gera `trainDerailed` com `reason: 'offBoard'` e a `direction` de saída.
+ * `trainMoved.from === null` significa entrada na grade: o primeiro passo
+ * pisa na primeira célula de trilho definida em `TrainSetup.entry.cell`.
+ * `trainMoved` só é emitido para destino dentro da grade; saída pela borda
+ * gera `trainDerailed` com `reason: 'offBoard'` e a `direction` de saída.
  *
  * `collision` lista todos os trens e as células envolvidas (uma para colisão
  * no mesmo destino; duas para troca de células no mesmo passo). Cada
@@ -494,8 +499,8 @@ export interface ApplyResult {
  *   estação (falso sinaliza descarrilamento — o render muda a aparência);
  * - `border`: o trem sairia da grade a partir de `cell` na direção
  *   `direction`; `cell` é a última célula dentro da grade;
- * - `noExit`: o trem para/descarrila em `cell` (célula vazia, peça sem
- *   conexão para a direção de entrada, ou entrada acessada no sentido errado);
+ * - `noExit`: o trem para/descarrila em `cell` (célula vazia ou peça sem
+ *   conexão para a direção de entrada);
  * - `loop`: revisita de (célula + direção de entrada) — ciclo fechado (D2);
  * - `limit`: o cap de segurança foi atingido antes de uma parada natural.
  */
@@ -518,11 +523,11 @@ export type PredictionStop =
  * Previsão de trajeto de UMA locomotiva (GDD §3.8).
  *
  * Ignora os outros trens — caminhos são independentes; colisão é a única
- * incerteza permitida. `path` começa na posição atual (ou na célula de
- * entrada, para um trem `waiting`) e termina em `stop.cell`, inclusive. Para
- * `loop`, a última célula repete uma anterior com a mesma direção de entrada
- * e `loop === true`; o render desenha o anel fechado com marcador (D2). Um
- * trem em loop continua ativo.
+ * incerteza permitida. `path` começa na posição atual (ou na primeira célula
+ * de trilho da entrada, para um trem `waiting`) e termina em `stop.cell`,
+ * inclusive. Para `loop`, a última célula repete uma anterior com a mesma
+ * direção de entrada e `loop === true`; o render desenha o anel fechado com
+ * marcador (D2). Um trem em loop continua ativo.
  *
  * O trajeto reflete o estado atual das peças (incluindo o braço ativo de cada
  * Y) e deve ser recalculado após qualquer giro, troca de ponta ou passo.

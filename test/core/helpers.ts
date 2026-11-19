@@ -61,9 +61,18 @@ export function station(color: Color = RED, shape: Shape = 'circle'): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
 }
 
-/** Célula de entrada apontando para dentro da grade. */
+/**
+ * Primeira célula de entrada como trilho alinhado (helper de teste).
+ *
+ * O modelo novo não tem célula fixa de entrada: a primeira célula é uma peça
+ * comum e pode ser reta, curva ou Y. Este helper monta a reta alinhada usada
+ * pelos layouts de teste para preservar os timelines; `direction` é o sentido
+ * em que o trem entra nela.
+ */
 export function entry(direction: Direction): Cell {
-  return { kind: 'fixed', fixed: { kind: 'entry', direction } };
+  return direction === 'north' || direction === 'south'
+    ? straight(0)
+    : straight(1);
 }
 
 /** Monta um `Board` a partir das linhas; a largura vem da primeira linha. */
@@ -79,14 +88,21 @@ export function pos(col: number, row: number): CellPos {
   return { col, row };
 }
 
-/** Configuração de trem para um layout de teste. */
+/**
+ * Configuração de trem para um layout de teste.
+ *
+ * `direction` é o sentido de entrada (perpendicular à borda da `entryCell`); o
+ * default `east` cobre os corredores horizontais e é sobrescrito nos testes de
+ * entradas norte/sul/oeste.
+ */
 export function trainSetup(
   id: string,
   color: Color,
   shape: Shape,
   entryCell: CellPos,
+  direction: Direction = 'east',
 ): TrainSetup {
-  return { id, color, shape, entry: entryCell };
+  return { id, color, shape, entry: { cell: entryCell, direction } };
 }
 
 /** Monta uma fase de teste; `lives` ausente preserva D1. */

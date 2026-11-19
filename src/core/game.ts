@@ -68,9 +68,10 @@ function pointsInward(
  * Valida as invariantes do dado da fase.
  *
  * Cobre o que o motor assume: linhas do tamanho certo, ao menos um trem,
- * IDs únicos, entrada existente, na borda e apontando para dentro, e uma
- * entrada distinta por trem. Regras de design (uma estação por cor, etc.)
- * ficam com o layout, não com o motor.
+ * IDs únicos, primeira célula de entrada dentro da grade, na borda, apontando
+ * para dentro e contendo uma peça de trilho, e uma célula de entrada distinta
+ * por trem. Regras de design (uma estação por cor, etc.) ficam com o layout,
+ * não com o motor.
  */
 export function validateLayout(layout: LevelLayout): void {
   const { board } = layout;
@@ -127,35 +128,37 @@ export function validateLayout(layout: LevelLayout): void {
 
     ids.add(trainSetup.id);
 
-    if (!inBounds(board, trainSetup.entry)) {
+    if (!inBounds(board, trainSetup.entry.cell)) {
       throw new Error(
         `Layout inválido: entrada do trem "${trainSetup.id}" está fora da grade.`,
       );
     }
 
-    const entryCell = cellAt(board, trainSetup.entry);
+    const entryCell = cellAt(board, trainSetup.entry.cell);
 
-    if (
-      entryCell === undefined ||
-      entryCell.kind !== 'fixed' ||
-      entryCell.fixed.kind !== 'entry'
-    ) {
+    if (entryCell === undefined || entryCell.kind !== 'piece') {
       throw new Error(
-        `Layout inválido: a célula de entrada do trem "${trainSetup.id}" não é uma entrada.`,
+        `Layout inválido: a primeira célula da entrada do trem "${trainSetup.id}" precisa conter uma peça de trilho.`,
       );
     }
 
-    if (!pointsInward(board, trainSetup.entry, entryCell.fixed.direction)) {
+    if (
+      !pointsInward(
+        board,
+        trainSetup.entry.cell,
+        trainSetup.entry.direction,
+      )
+    ) {
       throw new Error(
         `Layout inválido: a entrada do trem "${trainSetup.id}" precisa estar na borda e apontar para dentro.`,
       );
     }
 
-    const key = cellKey(trainSetup.entry);
+    const key = cellKey(trainSetup.entry.cell);
 
     if (entries.has(key)) {
       throw new Error(
-        `Layout inválido: dois trens usam a mesma entrada (${trainSetup.entry.col},${trainSetup.entry.row}).`,
+        `Layout inválido: dois trens usam a mesma entrada (${trainSetup.entry.cell.col},${trainSetup.entry.cell.row}).`,
       );
     }
 
@@ -165,30 +168,16 @@ export function validateLayout(layout: LevelLayout): void {
 
 /** Cria o snapshot inicial: todos os trens `waiting`, fora da grade. */
 function makeInitialState(layout: LevelLayout): GameState {
-  const trains = layout.trains.map((trainSetup): Train => {
-    const cell = cellAt(layout.board, trainSetup.entry);
-
-    if (
-      cell === undefined ||
-      cell.kind !== 'fixed' ||
-      cell.fixed.kind !== 'entry'
-    ) {
-      throw new Error(
-        `setup: a entrada do trem "${trainSetup.id}" não é uma entrada.`,
-      );
-    }
-
-    return {
-      id: trainSetup.id,
-      color: trainSetup.color,
-      shape: trainSetup.shape,
-      status: {
-        kind: 'waiting',
-        cell: trainSetup.entry,
-        direction: cell.fixed.direction,
-      },
-    };
-  });
+  const trains = layout.trains.map((trainSetup): Train => ({
+    id: trainSetup.id,
+    color: trainSetup.color,
+    shape: trainSetup.shape,
+    status: {
+      kind: 'waiting',
+      cell: trainSetup.entry.cell,
+      direction: trainSetup.entry.direction,
+    },
+  }));
 
   return {
     levelId: layout.id,

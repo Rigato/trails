@@ -221,7 +221,7 @@ describe('classifyAction', () => {
     expect(isAdvancing(outcome)).toBe(true);
   });
 
-  it('toque nulo: vazio, estação, entrada e fora da grade', () => {
+  it('toque nulo: vazio, estação e fora da grade', () => {
     const game = makeGame(corridor());
 
     expect(
@@ -229,9 +229,6 @@ describe('classifyAction', () => {
     ).toEqual({ kind: 'null', reason: 'empty' });
     expect(
       classifyAction(game.state, { kind: 'tap', cell: pos(4, 1) }),
-    ).toEqual({ kind: 'null', reason: 'fixed' });
-    expect(
-      classifyAction(game.state, { kind: 'tap', cell: pos(0, 1) }),
     ).toEqual({ kind: 'null', reason: 'fixed' });
     expect(
       classifyAction(game.state, { kind: 'tap', cell: pos(-1, 0) }),

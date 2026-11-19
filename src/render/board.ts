@@ -10,9 +10,9 @@
  * continua sendo o snapshot do core; os overrides só existem no quadro.
  */
 
-import type { Board, Entry, Station } from '../core/types';
+import type { Board, EntryPoint, Station } from '../core/types';
 import { TUNING } from '../config/tuning';
-import type { SceneLayout } from './layout';
+import { cellCenter, type SceneLayout } from './layout';
 import { drawPiece } from './pieces';
 import { drawShapeSymbol } from './symbol';
 
@@ -39,6 +39,7 @@ export function drawBoard(
   pieceAngles?: ReadonlyMap<string, number>,
   stationScales?: ReadonlyMap<string, number>,
   needleAngles?: ReadonlyMap<string, number>,
+  entries?: readonly EntryPoint[],
 ): void {
   drawGrid(ctx, layout);
 
@@ -66,20 +67,21 @@ export function drawBoard(
           needleAngles?.get(key),
         );
       } else if (content.kind === 'fixed') {
-        if (content.fixed.kind === 'station') {
-          drawStation(
-            ctx,
-            content.fixed,
-            x,
-            y,
-            layout.cell,
-            stationScales?.get(key) ?? 1,
-          );
-        } else {
-          drawEntry(ctx, content.fixed, x, y, layout.cell);
-        }
+        drawStation(
+          ctx,
+          content.fixed,
+          x,
+          y,
+          layout.cell,
+          stationScales?.get(key) ?? 1,
+        );
       }
     }
+  }
+
+  // Entradas são marcadores de borda derivados do layout, não células fixas.
+  for (const entry of entries ?? []) {
+    drawEntryMarker(ctx, layout, entry);
   }
 
   ctx.save();
@@ -180,28 +182,30 @@ function drawStation(
 }
 
 /**
- * Entrada na borda: chevron apontando para dentro da grade, na direção em que
- * a locomotiva entra. Fica encostado na borda externa da célula de entrada.
+ * Entrada na borda: chevron apontando para dentro da grade, derivado de
+ * `EntryPoint.cell`/`direction`. Fica encostado à borda externa da célula de
+ * entrada, majoritariamente fora da grade — o trem waiting fica uma célula
+ * atrás e o chevron continua legível.
  */
-function drawEntry(
+function drawEntryMarker(
   ctx: CanvasRenderingContext2D,
-  entry: Entry,
-  x: number,
-  y: number,
-  cell: number,
+  layout: SceneLayout,
+  entry: EntryPoint,
 ): void {
-  const cx = x + cell / 2;
-  const cy = y + cell / 2;
+  const cell = layout.cell;
+
+  if (cell <= 0) {
+    return;
+  }
+
+  const center = cellCenter(layout, entry.cell);
   const dx = entry.direction === 'east' ? 1 : entry.direction === 'west' ? -1 : 0;
   const dy = entry.direction === 'south' ? 1 : entry.direction === 'north' ? -1 : 0;
   const px = -dy;
   const py = dx;
   const size = cell * 0.26;
-  // O chevron fica na borda EXTERNA (o lado oposto à direção de entrada),
-  // majoritariamente fora da grade: assim a marca continua visível mesmo com o
-  // trem waiting pousado na célula.
-  const edgeX = cx - dx * cell * 0.5;
-  const edgeY = cy - dy * cell * 0.5;
+  const edgeX = center.x - dx * cell * 0.5;
+  const edgeY = center.y - dy * cell * 0.5;
   const anchorX = edgeX - dx * size * 0.35;
   const anchorY = edgeY - dy * size * 0.35;
   const tipX = anchorX + dx * size * 0.5;

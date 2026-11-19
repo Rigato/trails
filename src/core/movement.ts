@@ -157,8 +157,7 @@ export function moveThroughPiece(
  *
  * - `exit`: a célula tem trilho e o trem sai na direção indicada;
  * - `station`: a célula é estação; a entrega/descarrilamento depende da cor;
- * - `noExit`: o trem para/descarrila na célula (vazia, peça sem conexão ou
- *   entrada acessada no sentido errado).
+ * - `noExit`: o trem para/descarrila na célula (vazia ou peça sem conexão).
  */
 export type CellExit =
   | { readonly kind: 'exit'; readonly direction: Direction }
@@ -169,10 +168,9 @@ export type CellExit =
  * Resolve o que acontece com um trem que está sobre `cell` vindo de
  * `incoming`.
  *
- * A entrada é especial: ela só conduz para dentro quando o trem chega viajando
- * na direção marcada (`entry.direction`); qualquer outro sentido é bloqueado.
- * A estação não é atravessada por um trem em movimento — quem chama decide
- * entrega ou descarrilamento pela cor.
+ * Peças usam a tabela de movimento; a estação é um ponto de parada (quem chama
+ * decide entrega ou descarrilamento pela cor). Não existe mais célula fixa de
+ * entrada: a primeira célula é uma peça comum.
  */
 export function resolveCell(cell: Cell, incoming: Direction): CellExit {
   switch (cell.kind) {
@@ -187,13 +185,6 @@ export function resolveCell(cell: Cell, incoming: Direction): CellExit {
     }
 
     case 'fixed':
-      switch (cell.fixed.kind) {
-        case 'station':
-          return { kind: 'station' };
-        case 'entry':
-          return incoming === cell.fixed.direction
-            ? { kind: 'exit', direction: cell.fixed.direction }
-            : { kind: 'noExit' };
-      }
+      return { kind: 'station' };
   }
 }

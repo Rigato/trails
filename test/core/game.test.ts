@@ -71,14 +71,19 @@ describe('game — estado inicial e entrada', () => {
     });
   });
 
-  it('waiting não ocupa a entrada: toque na entrada é nulo antes do 1º passo', () => {
+  it('waiting não ocupa: girar a peça da entrada é permitido e avança 1 passo', () => {
     const game = makeGame(corridor());
     const result = game.apply({ kind: 'tap', cell: pos(0, 1) });
 
-    expect(result.advanced).toBe(false);
-    expect(result.outcome).toEqual({ kind: 'null', reason: 'fixed' });
-    expect(game.state.step).toBe(0);
-    expect(game.state.status).toBe('ready');
+    expect(result.advanced).toBe(true);
+    expect(result.outcome.kind).toBe('rotated');
+    expect(game.state.step).toBe(1);
+    expect(game.state.status).toBe('playing');
+    expect(trainById(game, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(0, 1),
+      incoming: 'east',
+    });
   });
 
   it('1º passo válido entra na entrada; o 2º anda exatamente 1 célula', () => {
@@ -410,7 +415,7 @@ describe('game — validação do layout', () => {  it('aceita o corredor válid
   it('rejeita entrada fora da borda', () => {
     const cells = board([
       [EMPTY, EMPTY, EMPTY],
-      [EMPTY, entry('east'), EMPTY],
+      [EMPTY, straight(1), EMPTY],
       [EMPTY, EMPTY, EMPTY],
     ]);
     const bad = makeLevel('interior', cells, [
@@ -420,30 +425,30 @@ describe('game — validação do layout', () => {  it('aceita o corredor válid
     expect(() => setup(bad)).toThrow(/borda e apontar para dentro/);
   });
 
-  it('rejeita entrada apontando para fora do sentido interno', () => {
+  it('rejeita direção de entrada paralela à borda', () => {
     const cells = board([
       [EMPTY, EMPTY, EMPTY],
       [entry('north'), EMPTY, EMPTY],
       [EMPTY, EMPTY, EMPTY],
     ]);
     const bad = makeLevel('wrong-direction', cells, [
-      trainSetup('red', RED, 'circle', pos(0, 1)),
+      trainSetup('red', RED, 'circle', pos(0, 1), 'north'),
     ]);
 
     expect(() => setup(bad)).toThrow(/borda e apontar para dentro/);
   });
 
-  it('rejeita entrada que não é uma célula entry', () => {
+  it('rejeita primeira célula de entrada sem peça de trilho', () => {
     const cells = board([
       [EMPTY, EMPTY, EMPTY],
-      [straight(1), EMPTY, EMPTY],
+      [EMPTY, EMPTY, EMPTY],
       [EMPTY, EMPTY, EMPTY],
     ]);
-    const bad = makeLevel('not-entry', cells, [
+    const bad = makeLevel('no-track', cells, [
       trainSetup('red', RED, 'circle', pos(0, 1)),
     ]);
 
-    expect(() => setup(bad)).toThrow(/não é uma entrada/);
+    expect(() => setup(bad)).toThrow(/peça de trilho/);
   });
 
   it('rejeita dois trens na mesma entrada', () => {
@@ -468,7 +473,7 @@ describe('game — validação do layout', () => {  it('aceita o corredor válid
     ]);
     const bad = makeLevel('duplicate-id', cells, [
       trainSetup('a', RED, 'circle', pos(0, 1)),
-      trainSetup('a', BLUE, 'square', pos(2, 1)),
+      trainSetup('a', BLUE, 'square', pos(2, 1), 'west'),
     ]);
 
     expect(() => setup(bad)).toThrow(/duplicado/);

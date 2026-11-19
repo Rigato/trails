@@ -119,7 +119,7 @@ describe('Y — §3.10', () => {
       ]),
       [
         trainSetup('red', RED, 'circle', pos(0, 1)),
-        trainSetup('blue', BLUE, 'square', pos(4, 1)),
+        trainSetup('blue', BLUE, 'square', pos(4, 1), 'west'),
       ],
     );
     const game = makeGame(level);

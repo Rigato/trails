@@ -224,7 +224,7 @@ describe('predictPath — recálculo e independência', () => {
         [EMPTY, y(0, 0, 'toggle'), EMPTY],
         [EMPTY, EMPTY, EMPTY],
       ]),
-      [trainSetup('red', RED, 'circle', pos(1, 0))],
+      [trainSetup('red', RED, 'circle', pos(1, 0), 'south')],
     );
     const game = makeGame(level);
 

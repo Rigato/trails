@@ -35,7 +35,7 @@ describe('step — §3.10 resolução simultânea', () => {
       ]),
       [
         trainSetup('a', RED, 'circle', pos(0, 1)),
-        trainSetup('b', BLUE, 'square', pos(2, 1)),
+        trainSetup('b', BLUE, 'square', pos(2, 1), 'west'),
       ],
     );
     const game = makeGame(level);
@@ -86,8 +86,8 @@ describe('step — §3.10 resolução simultânea', () => {
         [EMPTY, EMPTY, entry('north')],
       ]),
       [
-        trainSetup('a', RED, 'circle', pos(1, 0)),
-        trainSetup('b', BLUE, 'square', pos(2, 2)),
+        trainSetup('a', RED, 'circle', pos(1, 0), 'south'),
+        trainSetup('b', BLUE, 'square', pos(2, 2), 'north'),
       ],
     );
     const game = makeGame(level);
@@ -168,7 +168,7 @@ describe('step — §3.10 resolução simultânea', () => {
       ]),
       [
         trainSetup('a', RED, 'circle', pos(0, 1)),
-        trainSetup('b', BLUE, 'square', pos(2, 1)),
+        trainSetup('b', BLUE, 'square', pos(2, 1), 'west'),
       ],
     );
     const game = makeGame(level);
@@ -222,8 +222,8 @@ describe('step — §3.10 resolução simultânea', () => {
       ]),
       [
         trainSetup('a', RED, 'circle', pos(0, 2)),
-        trainSetup('b', BLUE, 'square', pos(4, 2)),
-        trainSetup('c', GREEN, 'triangle', pos(2, 0)),
+        trainSetup('b', BLUE, 'square', pos(4, 2), 'west'),
+        trainSetup('c', GREEN, 'triangle', pos(2, 0), 'south'),
       ],
     );
     const game = makeGame(level);

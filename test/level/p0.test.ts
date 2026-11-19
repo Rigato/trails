@@ -100,7 +100,6 @@ describe('P0 — fase «Contrato» (layout definitivo)', () => {
     expect(P0_LEVEL.trains).toHaveLength(1);
 
     let station: Station | undefined;
-    let entries = 0;
     let pieces = 0;
 
     for (const cell of cells) {
@@ -108,14 +107,12 @@ describe('P0 — fase «Contrato» (layout definitivo)', () => {
         pieces += 1;
       } else if (cell.kind === 'fixed' && cell.fixed.kind === 'station') {
         station = cell.fixed;
-      } else if (cell.kind === 'fixed' && cell.fixed.kind === 'entry') {
-        entries += 1;
       }
     }
 
-    // 8 peças na solução + 2 decoys isoladas; nada além de retas e curvas.
-    expect(pieces).toBe(10);
-    expect(entries).toBe(1);
+    // 8 peças giradas na solução + 1 reta alinhada na primeira célula + 2
+    // decoys isoladas; nada além de retas e curvas.
+    expect(pieces).toBe(11);
     expect(station).toBeDefined();
 
     const train = P0_LEVEL.trains[0];
@@ -123,7 +120,16 @@ describe('P0 — fase «Contrato» (layout definitivo)', () => {
     expect(train).toBeDefined();
     expect(train?.color).toBe(station?.color);
     expect(train?.shape).toBe(station?.shape);
-    expect(train?.entry).toEqual(pos(0, 1));
+    expect(train?.entry).toEqual({
+      cell: pos(0, 1),
+      direction: 'east',
+    });
+
+    // A primeira célula é trilho comum, não elemento fixo.
+    expect(cellAt(board, pos(0, 1))).toEqual({
+      kind: 'piece',
+      piece: { kind: 'straight', rot: 1 },
+    });
   });
 
   it('a cor do par trem/estação vem do tuning (§6, palette.pairs[0])', () => {

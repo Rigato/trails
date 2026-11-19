@@ -17,9 +17,17 @@
  *   4   |  c  Y  Y  Y  <
  *   5   ^  .  .  c  c  .
  *
- *   `^` entrada vermelha norte em (0,5); `<` entrada azul oeste em (5,4).
+ *   `^` marcador de entrada vermelha na borda norte de (0,5); a célula (0,5)
+ *   é uma reta N–S alinhada. `<` marcador azul na borda leste de (5,4); a
+ *   célula (5,4) é uma reta E–O alinhada. O trem espera FORA da grade e pisa
+ *   na primeira célula no passo 1.
  *   `@` estação vermelha/círculo em (1,1); `#` estação azul/quadrado em
  *   (3,1); `|` reta; `c` curva; `Y` desvio.
+ *
+ * ENTRADA: QUAIS TRILHOS SÃO POSSÍVEIS?
+ *   Qualquer peça móvel — reta, curva e Y. O modelo novo aceita qualquer uma;
+ *   o desenho da fase decide. As duas entradas usam reta alinhada para
+ *   preservar o timeline/window aprovados.
  *
  * OS QUATRO Ys
  *   - S = (2,1), split: rot 1 / arm 1 / next toggle (inicial).
@@ -100,9 +108,10 @@
  *   atalho do azul (braço S de E): (5,4) → E → (4,5) → (3,5) → m → M
  *             [passo 6] → colisão com o vermelho.
  *
- *   O tabuleiro tem 16 peças, todas em pelo menos uma rota (vermelha, azul
- *   longa, azul curta ou corredor compartilhado): zero decoys. O braço curto
- *   do azul não é decoy — é a rota errada do experimento.
+ *   O tabuleiro tem 18 peças (16 da rota + 2 primeiras células de entrada),
+ *   todas em pelo menos uma rota (vermelha, azul longa, azul curta ou corredor
+ *   compartilhado): zero decoys. O braço curto do azul não é decoy — é a rota
+ *   errada do experimento.
  *
  * VIDAS / DERROTA
  *   3 vidas (D7). Colisão custa 1 independentemente dos dois trens; um
@@ -115,7 +124,6 @@ import type {
   Board,
   Cell,
   Color,
-  Direction,
   LevelLayout,
   Rotation,
   Shape,
@@ -158,11 +166,6 @@ function station(color: Color, shape: Shape): Cell {
   return { kind: 'fixed', fixed: { kind: 'station', color, shape } };
 }
 
-/** Entrada de locomotiva na borda; `direction` aponta para dentro. */
-function entry(direction: Direction): Cell {
-  return { kind: 'fixed', fixed: { kind: 'entry', direction } };
-}
-
 /**
  * Grade 6×6; `rows[row][col]`.
  *
@@ -184,21 +187,23 @@ const board: Board = {
     // azul longo: (3,3) reta N-S, (4,3) reta N-S.
     [curve(1), curve(2), straight(0), straight(0), straight(0), EMPTY],
     // Vermelho: (0,4) reta N-S, (1,4) curva N-L; M em (2,4);
-    // m em (3,4) rot 3; E em (4,4) rot 1 / arm 0; entrada azul (5,4).
-    [straight(0), curve(0), y(0, 0, 'toggle'), y(3, 0, 'toggle'), y(1, 0, 'toggle'), entry('west')],
-    // Entrada vermelha (0,5) norte; atalho do azul: (3,5) curva L-N,
-    // (4,5) curva N-O.
-    [entry('north'), EMPTY, EMPTY, curve(0), curve(3), EMPTY],
+    // m em (3,4) rot 3; E em (4,4) rot 1 / arm 0; primeira célula azul (5,4)
+    // é reta E–O alinhada (o marcador fica na borda leste).
+    [straight(0), curve(0), y(0, 0, 'toggle'), y(3, 0, 'toggle'), y(1, 0, 'toggle'), straight(1)],
+    // Primeira célula vermelha (0,5): reta N–S alinhada (marcador na borda
+    // norte); atalho do azul: (3,5) curva L-N, (4,5) curva N-O.
+    [straight(0), EMPTY, EMPTY, curve(0), curve(3), EMPTY],
   ],
 };
 
 /**
  * Fase P1 como dado puro.
  *
- * As duas entradas são distintas e os dois trens entram no primeiro passo
- * (§3.5). A fase tem 3 vidas (D7); `lost` é inalcançável com 2 trens, mas o
- * contrato existe e é testado no core. As estações ficam internas, uma de
- * cada lado do split, para o rearme do passo 11 decidir o destino do azul.
+ * As duas primeiras células de entrada são distintas e contêm retas alinhadas;
+ * os dois trens entram no primeiro passo (§3.5). A fase tem 3 vidas (D7);
+ * `lost` é inalcançável com 2 trens, mas o contrato existe e é testado no core.
+ * As estações ficam internas, uma de cada lado do split, para o rearme do passo
+ * 11 decidir o destino do azul.
  */
 export const P1_LEVEL: LevelLayout = {
   id: 'p1-sincronia',
@@ -210,13 +215,13 @@ export const P1_LEVEL: LevelLayout = {
       id: 'red',
       color: RED,
       shape: RED_SHAPE,
-      entry: { col: 0, row: 5 },
+      entry: { cell: { col: 0, row: 5 }, direction: 'north' },
     },
     {
       id: 'blue',
       color: BLUE,
       shape: BLUE_SHAPE,
-      entry: { col: 5, row: 4 },
+      entry: { cell: { col: 5, row: 4 }, direction: 'west' },
     },
   ],
 };

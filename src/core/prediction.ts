@@ -30,10 +30,12 @@ interface StartState {
 /**
  * Posição inicial da previsão.
  *
- * Trem `waiting` ainda está fora da grade, mas o trajeto começa na célula de
- * entrada, viajando na direção marcada pela `Entry`. Trem `running` começa na
- * célula atual com sua direção de entrada. Entregue/descarrilado não tem
- * previsão.
+ * Trem `waiting` ainda está fora da grade, mas o trajeto começa na primeira
+ * célula de trilho da entrada (`entry.cell`), viajando na direção marcada por
+ * `entry.direction`; a própria peça dessa célula já é resolvida, então uma
+ * entrada torta aparece como `noExit` ali antes do primeiro passo. Trem
+ * `running` começa na célula atual com sua direção de entrada. Entregue ou
+ * descarrilado não tem previsão.
  */
 function startState(train: Train): StartState | undefined {
   switch (train.status.kind) {
@@ -78,10 +80,10 @@ function finish(
  * Calcula o caminho futuro de um trem.
  *
  * Devolve `undefined` para trem entregue ou descarrilado. O `path` inclui a
- * posição inicial (ou a célula de entrada, para `waiting`) e termina em
- * `stop.cell`; em um loop, a última célula repete uma anterior com a mesma
- * direção de entrada e `loop` é `true`. `maxSteps` limita o número de células
- * do trajeto (default 24).
+ * posição inicial (ou a primeira célula de trilho da entrada, para `waiting`)
+ * e termina em `stop.cell`; em um loop, a última célula repete uma anterior com
+ * a mesma direção de entrada e `loop` é `true`. `maxSteps` limita o número de
+ * células do trajeto (default 24).
  */
 export function predictPath(
   board: Board,
@@ -156,10 +158,6 @@ export function predictPath(
     }
 
     if (destination.kind === 'empty') {
-      return finish(train, path, { kind: 'noExit', cell: next });
-    }
-
-    if (destination.kind === 'fixed' && destination.fixed.kind === 'entry') {
       return finish(train, path, { kind: 'noExit', cell: next });
     }
 

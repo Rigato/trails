@@ -87,9 +87,8 @@ interface DerailInfo {
  * O que acontece ao chegar em `destination` viajando na direção `direction`.
  *
  * Trem que chega a estação da cor certa é entregue; estação de cor errada
- * descarrila; vazio, entrada acessada de dentro e peça sem conexão também
- * descarriam. Peça com saída continua `running` (a direção de saída só será
- * usada no próximo passo).
+ * descarrila; vazio e peça sem conexão também descarriam. Peça com saída
+ * continua `running` (a direção de saída só será usada no próximo passo).
  */
 function resolveArrival(
   train: Train,
@@ -110,7 +109,7 @@ function resolveArrival(
       : { kind: 'derailed', reason: 'noExit' };
   }
 
-  // Vazio, entrada acessada de dentro e futuros fixos bloqueantes.
+  // Vazio e futuros fixos bloqueantes.
   return { kind: 'derailed', reason: 'noExit' };
 }
 
@@ -235,7 +234,8 @@ export function resolveStep(
   // 2. Resolver a chegada de cada movimento planejado.
   for (const mover of movers) {
     if (mover.entersFromOutside) {
-      // Entrar pela entrada é sempre válido (o setup garante a célula).
+      // O primeiro passo apenas pisa na primeira célula de trilho; o setup
+      // garante que ela existe na borda. A peça dali é resolvida no passo 2.
       continue;
     }
 
