@@ -10,7 +10,8 @@
  *
  * A parada tem aparência própria: anel na estação certa, X no canto superior
  * direito da estação errada (fora do símbolo do par), seta na borda, sinal de
- * proibido em célula sem saída, gota na água e anel com marcador no loop (D2).
+ * proibido em célula sem saída, gota na água, montanha com barreira e anel com
+ * marcador no loop (D2).
  *
  * V-1/E10: o traço colorido tem um canal claro por baixo, mas o trilho manda:
  * o canal fica DENTRO da largura do trilho e com alpha, então as bordas escuras
@@ -85,7 +86,8 @@ function directionBetween(from: CellPos, to: CellPos): Direction | undefined {
  * Os dois lados conectados de uma peça, na convenção do core.
  *
  * Reta rot 0: N–S; rot 1: L–O. Curva rot 0: N–L; cada quarto CW gira os dois
- * lados juntos.
+ * lados juntos. O cruzamento não usa esta função: os dois canais são escolhidos
+ * pela entrada/saída real do path (ver `tracePredictionRoute`).
  */
 function pieceSides(piece: StraightPiece | CurvePiece): readonly [Direction, Direction] {
   if (piece.kind === 'straight') {
@@ -298,6 +300,15 @@ function tracePredictionRoute(
       continue;
     }
 
+    if (content?.kind === 'fixed' && content.fixed.kind === 'mountain') {
+      // Montanha é massa, não trilho: o traço para na borda e o marcador
+      // próprio (triângulo + barreira) fala no centro, sem lavar a pedra.
+      if (entrySide !== undefined) {
+        place(edgePoint(center, entrySide, half));
+      }
+      continue;
+    }
+
     if (content?.kind === 'piece') {
       if (content.piece.kind === 'y') {
         // Y: a rota selecionada entra/sai por lados que o core já resolveu. O
@@ -316,6 +327,23 @@ function tracePredictionRoute(
 
         if (exit !== undefined) {
           lineTo(edgePoint(center, exit, half));
+        }
+        continue;
+      }
+
+      if (content.piece.kind === 'crossing') {
+        // Cruzamento: os dois canais são retos e independentes. O path do core
+        // já escolheu o canal pela entrada; aqui só ligamos entrada → centro →
+        // saída, sem curva e sem atalho — o traço atravessa o X no canal certo.
+        if (entrySide !== undefined) {
+          place(edgePoint(center, entrySide, half));
+          lineTo(center);
+        } else {
+          place(center);
+        }
+
+        if (exitSide !== undefined) {
+          lineTo(edgePoint(center, exitSide, half));
         }
         continue;
       }
@@ -607,6 +635,29 @@ function drawStopMarker(
       ctx.arc(cx, cy + radius * 0.7, radius * 1.06, Math.PI * 0.22, Math.PI * 0.78);
       ctx.stroke();
       ctx.restore();
+      break;
+    }
+
+    case 'mountain': {
+      // Montanha: pico (triângulo) sobre uma barreira grossa. A massa já é o
+      // bloqueio; o marcador diz «aqui não passa» sem repetir o proibido de
+      // noExit nem a gota da água.
+      const width = cellSize * 0.46;
+      const peakY = center.y - cellSize * 0.25;
+      const baseY = center.y + cellSize * 0.13;
+
+      ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.045);
+      ctx.beginPath();
+      ctx.moveTo(center.x - width / 2, baseY);
+      ctx.lineTo(center.x, peakY);
+      ctx.lineTo(center.x + width / 2, baseY);
+      ctx.stroke();
+
+      ctx.lineWidth = Math.max(MIN_STROKE, cellSize * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(center.x - width * 0.62, baseY + cellSize * 0.075);
+      ctx.lineTo(center.x + width * 0.62, baseY + cellSize * 0.075);
+      ctx.stroke();
       break;
     }
 

@@ -529,6 +529,9 @@ export function drawDeliveryPulse(
  * - `water`: o trem para NA água e **afunda no lugar** — centro fixo (sem
  *   deslize lateral, que daria a impressão de travessia), encolhe, um véu
  *   escuro de água fecha por cima e dois anéis claros ondulam na célula.
+ * - `mountain`: o trem **bate na massa e fica** — tremor curto no lugar,
+ *   poeira clara/terra na base, encolhe e some. Sem deslize para a célula
+ *   vizinha (que no P3 é um portal de túnel e confundiria a leitura).
  * - outros motivos: desliza na direção da falha, encolhe e some.
  */
 export function drawDerailExit(
@@ -548,6 +551,11 @@ export function drawDerailExit(
     return;
   }
 
+  if (exit.reason === 'mountain') {
+    drawMountainCrash(ctx, layout, exit, t);
+    return;
+  }
+
   const center = cellCenter(layout, exit.cell);
   const offset = directionOffset(exit.direction);
   const travel = layout.cell * 0.8 * easeOutQuad(t);
@@ -560,6 +568,52 @@ export function drawDerailExit(
     exit.train,
     center.x + offset.col * travel,
     center.y + offset.row * travel,
+    directionAngle(exit.direction),
+    scale,
+    alpha,
+  );
+}
+
+/**
+ * Batida na montanha: o trem não desliza para a célula vizinha. Ele treme no
+ * ponto de impacto, perde escala e some, enquanto poeira clara e terra
+ * levantam da base da massa. Mantém o fantasma NA montanha e evita que o
+ * descarrilamento pareça uma entrada no túnel logo abaixo.
+ */
+function drawMountainCrash(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  exit: DerailExit,
+  t: number,
+): void {
+  const cell = layout.cell;
+  const center = cellCenter(layout, exit.cell);
+  const shake = Math.sin(t * Math.PI * 12) * cell * 0.028 * (1 - t);
+  const scale = 1 - 0.34 * t;
+  const alpha = 1 - t * t;
+
+  ctx.save();
+  for (let i = 0; i < 3; i += 1) {
+    const side = i - 1;
+    const radius = cell * (0.05 + 0.10 * easeOutQuad(t));
+    const x = center.x + side * cell * 0.26;
+    const y = center.y + cell * 0.18 - cell * 0.10 * t;
+
+    ctx.globalAlpha = 0.2 * (1 - t);
+    ctx.fillStyle =
+      i === 1 ? TUNING.palette.background : TUNING.palette.mountain;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  drawTrainAt(
+    ctx,
+    cell,
+    exit.train,
+    center.x + shake,
+    center.y,
     directionAngle(exit.direction),
     scale,
     alpha,

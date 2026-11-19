@@ -34,6 +34,16 @@ export interface Palette {
    */
   readonly river: string;
   /**
+   * Massa da montanha (P3/D17): terra-pedra, longe do teal da água e do cinza
+   * do trilho. A montanha é um bloco, não um símbolo de peça.
+   */
+  readonly mountain: string;
+  /**
+   * Boca do túnel (P3/D18): o vão escuro do portal, na cor do trilho. A forma
+   * de arco com moldura é o que separa a boca de um traço de trilho comum.
+   */
+  readonly tunnel: string;
+  /**
    * Cores default dos pares trem/estação por fase (P1+). A fase traz as cores
    * no dado; `pairs[0]` substitui o antigo `palette.pair` (F-01 continua
    * válido: o P0 lê a cor daqui).
@@ -73,8 +83,6 @@ export interface Tuning {
   readonly trackWidthRatio: number;
   /** Tamanho visual da estação relativo à célula. */
   readonly stationInsetRatio: number;
-  /** Tamanho da agulha do Y relativo à célula. */
-  readonly yNeedleRatio: number;
   /** Diâmetro visual da moeda relativo à célula (anel; overlay sobre o trilho). */
   readonly coinRatio: number;
   /** Feedback de coleta da moeda (E13). */
@@ -122,7 +130,6 @@ export const TUNING: Tuning = {
   trainSizeRatio: 0.6,
   trackWidthRatio: 0.16,
   stationInsetRatio: 0.74,
-  yNeedleRatio: 0.38,
   coinRatio: 0.22,
   coinPulseMs: 300,
   symbolSizeRatio: 0.28,
@@ -140,6 +147,8 @@ export const TUNING: Tuning = {
     background: '#f4f1ea',
     track: '#3a3f44',
     river: '#2f8f9d',
+    mountain: '#8a7a5c',
+    tunnel: '#3a3f44',
     pairs: ['#d64545', '#3b82f6'],
     predictionAlpha: 0.55,
   },

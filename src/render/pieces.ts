@@ -42,7 +42,8 @@ const Y_INACTIVE_ALPHA = 0.6;
  * Constrói o traçado canônico de uma peça no contexto atual, sem espessura nem
  * cor. O chamador decide o stroke. A previsão pontilhada reconstrói a mesma
  * geometria canônica (reta entre bordas opostas; arco no canto; Y com três
- * stubs) em um caminho contínuo, então a rota nunca «descola» do trilho.
+ * stubs; cruzamento com dois canais retos) em um caminho contínuo, então a rota
+ * nunca «descola» do trilho.
  */
 export function tracePiecePath(
   ctx: CanvasRenderingContext2D,
@@ -69,6 +70,14 @@ export function tracePiecePath(
     // Canônico: norte–leste. Centro no canto NE; arco pela borda interna do
     // canto, tangente aos lados norte e leste.
     ctx.arc(cell, 0, half, Math.PI / 2, Math.PI, false);
+  } else if (piece.kind === 'crossing') {
+    // Canônico: N–S e L–O, os dois canais retos independentes. A rotação troca
+    // os canais entre si, mas o desenho é o mesmo; o plus contínuo é a leitura
+    // de cruzamento (nunca um nó arredondado de zona segura).
+    ctx.moveTo(half, 0);
+    ctx.lineTo(half, cell);
+    ctx.moveTo(0, half);
+    ctx.lineTo(cell, half);
   } else {
     // Y canônico: talo N + braços L/O até o centro; o lado S fechado fica sem
     // traço. O encontro no centro é coberto pelo pino desenhado em drawPiece.

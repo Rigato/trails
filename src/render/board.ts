@@ -78,8 +78,12 @@ export function drawBoard(
           );
         } else if (content.fixed.kind === 'river') {
           drawRiver(ctx, x, y, layout.cell);
-        } else {
+        } else if (content.fixed.kind === 'bridge') {
           drawBridge(ctx, content.fixed, x, y, layout.cell);
+        } else if (content.fixed.kind === 'tunnel') {
+          drawTunnel(ctx, x, y, layout.cell);
+        } else {
+          drawMountain(ctx, x, y, layout.cell);
         }
       }
     }
@@ -234,6 +238,164 @@ function drawBridge(
   ctx.restore();
 }
 
+
+/**
+ * Portal de túnel (P3/D18).
+ *
+ * A leitura é «passa por baixo»: um arco escuro (boca), uma moldura clara e um
+ * aro interno que sugere profundidade. Os DOIS portais do par usam exatamente a
+ * mesma composição — mesma cor, mesmas proporções, mesmo aro — para o jogador
+ * pareá-los sem texto. O portal não recebe trilho: o trem entra na boca e a
+ * previsão retoma no parceiro.
+ */
+function drawTunnel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+): void {
+  const cx = x + cell / 2;
+  const baseY = y + cell * 0.92;
+
+  // Moldura escura externa; o vão claro separa a moldura da boca.
+  traceArch(ctx, cx, baseY, cell * 0.78, cell * 0.86);
+  ctx.closePath();
+  ctx.fillStyle = PALETTE.track;
+  ctx.fill();
+
+  traceArch(ctx, cx, baseY, cell * 0.70, cell * 0.78);
+  ctx.closePath();
+  ctx.fillStyle = PALETTE.background;
+  ctx.fill();
+
+  // Boca: mesma cor do trilho, mas a forma de arco é a assinatura do portal.
+  traceArch(ctx, cx, baseY, cell * 0.62, cell * 0.70);
+  ctx.closePath();
+  ctx.fillStyle = PALETTE.tunnel;
+  ctx.fill();
+
+  // Aro interno: profundidade do túnel, sem fechar a base (não é plataforma).
+  ctx.save();
+  ctx.strokeStyle = PALETTE.background;
+  ctx.globalAlpha = 0.2;
+  ctx.lineWidth = Math.max(1, cell * 0.018);
+  traceArch(ctx, cx, baseY - cell * 0.035, cell * 0.42, cell * 0.50);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Traçado de um arco de portal: base reta, ombros e topo semicircular. */
+function traceArch(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  baseY: number,
+  width: number,
+  height: number,
+): void {
+  const half = width / 2;
+  const top = baseY - height;
+  const radius = half;
+
+  ctx.beginPath();
+  ctx.moveTo(cx - half, baseY);
+  ctx.lineTo(cx - half, top + radius);
+  ctx.arc(cx, top + radius, radius, Math.PI, 0, false);
+  ctx.lineTo(cx + half, baseY);
+}
+
+/**
+ * Montanha (P3/D17): massa terra-pedra, sem trilho e sem símbolo de peça.
+ *
+ * A silhueta de dois picos (principal + ombro menor) e as facetas evitam a
+ * leitura de triângulo de aviso ou de telhado de estação. O bloco é
+ * intransponível: a previsão para na borda e o marcador próprio fala por ele.
+ */
+function drawMountain(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  cell: number,
+): void {
+  const baseY = y + cell * 0.84;
+  const peak = { x: x + cell * 0.52, y: y + cell * 0.15 };
+  const shoulder = { x: x + cell * 0.74, y: y + cell * 0.49 };
+  const leftPeak = { x: x + cell * 0.30, y: y + cell * 0.37 };
+  const valley = { x: x + cell * 0.39, y: y + cell * 0.50 };
+  const leftFoot = { x: x + cell * 0.17, y: y + cell * 0.64 };
+  const leftBase = { x: x + cell * 0.06, y: baseY };
+  const rightBase = { x: x + cell * 0.94, y: baseY };
+  const centreBase = { x: peak.x, y: baseY };
+
+  const silhouette = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(leftBase.x, leftBase.y);
+    ctx.lineTo(leftFoot.x, leftFoot.y);
+    ctx.lineTo(leftPeak.x, leftPeak.y);
+    ctx.lineTo(valley.x, valley.y);
+    ctx.lineTo(peak.x, peak.y);
+    ctx.lineTo(shoulder.x, shoulder.y);
+    ctx.lineTo(rightBase.x, rightBase.y);
+    ctx.closePath();
+  };
+
+  ctx.save();
+
+  // Sombra de contato: assenta a massa na célula.
+  ctx.fillStyle = PALETTE.track;
+  ctx.globalAlpha = 0.12;
+  ctx.beginPath();
+  ctx.ellipse(
+    x + cell * 0.5,
+    baseY + cell * 0.02,
+    cell * 0.42,
+    cell * 0.055,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+
+  silhouette();
+  ctx.fillStyle = PALETTE.mountain;
+  ctx.globalAlpha = 1;
+  ctx.fill();
+
+  // Facetas: luz à esquerda, sombra à direita; o veio central é a aresta.
+  ctx.clip();
+
+  ctx.fillStyle = PALETTE.background;
+  ctx.globalAlpha = 0.14;
+  ctx.beginPath();
+  ctx.moveTo(leftBase.x, leftBase.y);
+  ctx.lineTo(leftFoot.x, leftFoot.y);
+  ctx.lineTo(leftPeak.x, leftPeak.y);
+  ctx.lineTo(valley.x, valley.y);
+  ctx.lineTo(peak.x, peak.y);
+  ctx.lineTo(centreBase.x, centreBase.y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = PALETTE.track;
+  ctx.globalAlpha = 0.16;
+  ctx.beginPath();
+  ctx.moveTo(peak.x, peak.y);
+  ctx.lineTo(shoulder.x, shoulder.y);
+  ctx.lineTo(rightBase.x, rightBase.y);
+  ctx.lineTo(centreBase.x, centreBase.y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = 0.24;
+  ctx.strokeStyle = PALETTE.track;
+  ctx.lineWidth = Math.max(1, cell * 0.018);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(peak.x, peak.y);
+  ctx.lineTo(centreBase.x, centreBase.y);
+  ctx.stroke();
+
+  ctx.restore();
+}
 
 /**
  * Estação em forma de casa: telhado triangular + bloco arredondado, na cor do
