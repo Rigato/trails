@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Versão** | 1.3 — protótipo P0–P3+ construído; decisões D1–D21 consolidadas (horizonte de previsão, entrada off-board, Y por conexão, densidade 2–3) |
-| **Data** | 18–19/11/2026 |
-| **Estado** | Protótipo completo (cadeia de 5 fases) — aguardando playtest de validação |
+| **Versão** | 1.4 — MVP2 em implementação; placement/modelo do seletor ratificados (D25/D26) e decisões D23–D32 fechadas pelo designer (tutorial 4 fases, economia com sink, selo, loja, 100% viável) |
+| **Data** | 18–19/11/2026 (v1.3) · 22/11/2026 (v1.4) |
+| **Estado** | Protótipo P0–P3+ completo; mecânica validada pelo designer (21/11) — MVP2 «xadrez consigo mesmo» em execução |
 | **Fonte** | Especificação preliminar `trilhos-gameplay.md` + sessões de design + `referencias-comparativas.md` + decisões D1–D21 do planejador técnico |
 
 > **Convenção de marcação:**
@@ -83,7 +83,7 @@ Protótipo P0–P3+ **construído**; a validação agora depende do **playtest**
 - **[FECHADO — D3] Toque nulo:** cruzamento (sem ação), elemento fixo ou célula vazia **não contam como ação** — o passo não avança; o feedback é um flash discreto, parametrizável e desligável.
 - **[FECHADO — D4] Ação enfileirada que virou inválida** (ex.: peça ocupada quando o buffer a processa) é **descartada sem custo de passo**.
 - **[FECHADO] Buffer de input:** toques durante a animação são enfileirados, não descartados. A duração da animação É o ritmo do jogo — mantida curta.
-- **[FECHADO — D22] Sentido de rotação selecionável (CW/CCW):** seletor **fora do tabuleiro** — seta alternável antes de selecionar a peça — para todas as peças, não só o Y. *(Reverte a D14 «manter CW»: o designer testou o custo de 270° em primeira mão e decidiu — «essencial ter; abre oportunidades de level design»: o contragiro vira LANCE, não imposto.)* O seletor define o **sentido** do giro; o ABAB do Y alterna **qual ação** (trocar ponta ↔ girar) — ortogonais: no Y, o "girar" do ABAB usa o sentido atual do seletor. **[CONFIRMAR] Modo persistente** (não gasta ação — ferramenta, não turno) com **estado visível no HUD** (seta grande apontando o sentido ativo) para mitigar o "modo esquecido" (mesma família do ABAB/Q3). Tutorial: apresentar logo após o Y, antes da primeira fase que exige contragiro. Placement/visual exato: **[A DEFINIR]** na sessão dos três.
+- **[FECHADO — D22] Sentido de rotação selecionável (CW/CCW):** seletor **fora do tabuleiro** — seta alternável antes de selecionar a peça — para todas as peças, não só o Y. *(Reverte a D14 «manter CW»: o designer testou o custo de 270° em primeira mão e decidiu — «essencial ter; abre oportunidades de level design»: o contragiro vira LANCE, não imposto.)* O seletor define o **sentido** do giro; o ABAB do Y alterna **qual ação** (trocar ponta ↔ girar) — ortogonais: no Y, o "girar" do ABAB usa o sentido atual do seletor. **[FECHADO — D26] Modo persistente** (não gasta ação — ferramenta, não turno) com **estado visível no HUD** para mitigar o "modo esquecido" (mesma família do ABAB/Q3). Tutorial: apresentar logo após o Y, antes da primeira fase que exige contragiro (D24: wingdings — pulso D6, zero texto). **[FECHADO — D25] Placement:** fileira inferior de botões, junto de «Passar turno» — seta circular grande apontando o sentido ativo (↻/↺).
 - Sem limite de ações por fase; sem desfazer no MVP.
 - **Vigilância de playtest:** o botão "passar turno" pode reduzir a tensão temporal. Variante de fallback: removê-lo.
 
@@ -183,12 +183,12 @@ Ordem de resolução, após cada ação:
 - **[FECHADO] Direção da economia — círculo virtuoso (para o jogo final):** recompensa escala de forma **superlinear com os trens entregues**. Vitória entregando 1 trem = tecnicamente válida, de baixo mérito ("chocha"): recompensa mínima. Estímulo: mais moedas → consumíveis que ajudam nas próximas fases → o jogador se esforça para salvar mais trens.
 - **[FECHADO] Ancoragem em trens entregues, não em vidas:** perder trens é o evento; vidas são só o orçamento. Uma colisão remove DOIS trens e deve custar DOIS bônus — ancorar em vidas deixaria o "combo colisão-parede" barato.
 - **Posicionamento em tabuleiro [CONFIRMAR]: perto do risco** — cruzamentos, pontes, junções disputadas: o desvio corajoso paga (lição Pipe Mania).
-- **Fórmulas exatas: [A DEFINIR — tuning].** *Perguntas-chave: bônus por trem linear, quadrático ou tabela por fase? Moedas de trem morto contam na base, sem bônus?*
+- **Fórmulas exatas [FECHADO — D27]:** bônus por trem entregue em **tabela fixa n×(n−1)** — {1: +0, 2: +2, 3: +6, 4: +12} — superlinear e de leitura imediata, **exibido legível na tela de vitória** («+6 — 3/3 trens entregues»). Moedas coletadas contam 1 cada na base, sem distinção de trem morto (D16: a moeda do trem que morre no mesmo passo conta). Os valores são tuning (`tuning.ts`); a fórmula é fechada.
 - **Guard-rails do círculo virtuoso (pós-MVP):** (1) o círculo só fecha com **sink** — entra logo após a validação; (2) consumíveis dão **margem, nunca entregam trens**; (3) dicas progressivas (+1 segmento da solução por desistência, lição Railbound) são sink de informação, não de poder.
-- Sem estrelas, ranking ou pontuação no MVP1 (validação de mecânica). **[FECHADO — MVP2, decisões do designer 21/11] Aposta por aspiração, agora com sink:**
-  1. **Selo de perfeição por fase** — todos os trens + todas as moedas; **conquistado apenas em run sem consumíveis** (perfeição é run limpa).
-  2. **Save entre sessões** — progresso de fases, selos e carteira persistem (16 fases exigem mais de uma sessão).
-  3. **Loja rudimentar [CONFIRMAR]** com dois consumíveis, ambos custando moedas e **bloqueando o selo da fase**: **Resgate de trem** (um trem perdido volta ao ponto de espera fora da grade e entra no próximo passo; **não devolve a vida perdida** — recupera o requisito dinâmico, não o orçamento; apresentado como alternativa à desistência na detecção de não-vencível) e **Time-travel** (reverte **integralmente** o último passo: posições, peças, moedas, mortes, vidas e entregas). Preços e limite de usos por run: **[A DEFINIR — tuning]**. *Régua de preço do time-travel: desfazer a run inteira deve ser proibitivo; salvar 1 passo crítico deve ser tentador — senão o item desvaloriza a morte ou morre na loja.*
+- Sem estrelas, ranking ou pontuação no MVP1 (validação de mecânica). **[FECHADO — MVP2, decisões do designer 21/11; D27–D31 fechadas em 22/11] Aposta por aspiração, agora com sink:**
+  1. **Selo de perfeição por fase** — todos os trens + todas as moedas; **conquistado apenas em run sem consumíveis** (perfeição é run limpa). **[FECHADO — D30] Estética: estrela dourada** — forma + cor, nunca cor sozinha; visível na saída e na lista de fases.
+  2. **Save entre sessões** — progresso de fases, selos e carteira persistem (16 fases exigem mais de uma sessão). **[FECHADO — D31] Farm entre sessões aceito no MVP2** — o selo não é farmável (uma vez por fase); mitigação por recorde só se os dados doerem.
+  3. **Loja rudimentar [FECHADO — decisão do designer]** com dois consumíveis, ambos custando moedas e **bloqueando o selo da fase**, indisponíveis no tutorial e após vitória/derrota: **Resgate de trem** (um trem perdido volta ao ponto de espera fora da grade e entra no próximo passo; **não devolve a vida perdida** — recupera o requisito dinâmico, não o orçamento; apresentado como alternativa à desistência na detecção de não-vencível: «resgatar (custa moedas) vs desistir (grátis)») e **Time-travel** (reverte **integralmente** o último passo: posições, peças, moedas, mortes, vidas e entregas). **[FECHADO — D28/D29; valores = tuning]**: Resgate **1 por run, preço ~8, alvo = o último trem perdido**; Time-travel **preço fixo ~4 por uso** (cada compra reverte 1 passo integral; desfazer a run inteira fica proibitivo por acumulação — a régua satisfeita por construção).
   4. **Energia** (limite de tentativas fora da run, recarregável por anúncios — padrão free-to-play): **[A DEFINIR — anotada, decisão de modelo de negócio, pós-MVP2]**. *Nota honesta: energia é o oposto da derrota barata; se um dia entrar, muda o DNA do jogo. O nome casa com a ideia futura de energia encadeada.*
   Guard-rails do §4 seguem valendo: consumíveis dão **margem, nunca solução**.
 
@@ -204,6 +204,9 @@ Ordem de resolução, após cada ação:
 
 - **[FECHADO na prática] Tutorial impossível de falhar** (P0): a falha não existe como custo; texto mínimo (meta: "wingdings test", lição Trainyard); tutorial **distribuído** — cada conceito se apresenta quando se torna necessário.
 - **[FECHADO — D20, revisão do designer 21/11] Densidade de trens:** o jogo real começa em **3 trens e sobe** — «2 trens é muito fácil, coisa de tutorial». Padrão do jogo real = **3**; pico = **4** nas fases de dificuldade máxima; **2 trens é linguagem de tutorial**, apenas. 5+ permanece fora (exceção de mundos tardios). O aquecimento vem do **layout** (recursos disputados e janelas generosas), não de menos trens. *(Revisa o registro original: o P3+ provou 3 legível e 4 jogável — logo servem de piso e teto do desafio real.)*
+- **[FECHADO — D23, MVP2] O tutorial do jogo real tem 4 fases:** Contrato → Sincronia → Obstáculos → Densidade. O P3+ (4 trens) **sai do tutorial** — era prova de carga (Q7), não ensino; o pico de 4 trens vira conteúdo da faixa 3. A última fase entrega a **transição de tom**: o primeiro trade-off real (rota segura vs rota com moeda arriscada) — o jogador sente o gênero do jogo real antes de sair do tutorial, sem troca de motor.
+- **[FECHADO — D24] Apresentação de conceitos novos no tutorial:** padrão D6 — destaque sutil pulsante, **zero texto**; a meta «wingdings» vale também para o seletor de sentido.
+- **[FECHADO — D32] No MVP2, toda fase é 100% viável** — perda forçada como solução ótima fica fora (quebraria o selo de perfeição e o Pilar 4); se o design um dia pedir, é expansão pós-MVP2 com sinalização própria (ícone de contrato diferente). Desenhar 100%-viável é o braço de ferro saudável do level design.
 - **Curva de dificuldade [CONFIRMAR]:** vales periódicos entre rampas (lição Trainyard); **combinações de blocos = elemento novo** com fases próprias; no jogo final, o último nível de um mundo apresenta a ideia mais nova, não a maior dificuldade (lição Cut the Rope).
 
 ### Geração de fases
@@ -243,7 +246,10 @@ Loop completo implementado: 4 peças móveis (reta, curva, Y, cruzamento), fixos
 
 **Falta para validar:** **playtest** — a construção não responde Q1–Q8; jogadores respondem. Instrumento: `plano-prototipo.md` §9 (failing vs. skipping, think-aloud, checklist pós-sessão).
 
-**Fora do MVP (pós-validação):** gerador de fases, progressão longa, mundos temáticos, paisagem, consumíveis/sink, desfazer, estrelas/ranking, semáforo, desvio fixo, formatos irregulares, trem de vagões, eventos aleatórios, combustível, clima, áudio.
+**Fora do MVP (pós-validação):** gerador de fases, progressão longa, mundos temáticos, paisagem, consumíveis/sink *(entram no MVP2 — ver abaixo)*, desfazer *(entra no MVP2 como Time-travel da loja)*, estrelas/ranking *(o selo de perfeição entra no MVP2; ranking segue fora)*, semáforo, desvio fixo, formatos irregulares, trem de vagões, eventos aleatórios, combustível, clima, áudio.
+
+### MVP2 «Xadrez consigo mesmo» — **ESTADO: EM IMPLEMENTAÇÃO (22/11)**
+Escopo aprovado (`proposta-mvp2.md` v2; plano operacional `plano-implementacao-mvp2.md`): seletor CW/CCW (D22/D25/D26) · save entre sessões + carteira + bônus n×(n−1) (D27) + selo estrela dourada (D30) + loja com Resgate (D28) e Time-travel (D29) · tutorial de 4 fases (D23/D24) · 12 fases reais em 3 faixas — 3 trens desde a faixa 1, pico 4 na faixa 3 (D20) · toda fase 100% viável (D32). **Gate do designer após a faixa 1:** «é xadrez agora?». Sessões externas seguem como instrumento de calibração, não bloqueio.
 
 **Critério de sucesso do MVP [CONFIRMAR]:** rejogar fases por vontade própria; mortes percebidas como justas — com o contrato local/remoto (D21): morte remota é descoberta, nunca surpresa instantânea; o sacrifício estratégico ocorre mas não domina; a economia-de-ação continua tensa.
 
@@ -260,10 +266,10 @@ Loop completo implementado: 4 peças móveis (reta, curva, Y, cruzamento), fixos
 6. **Ideias de longo prazo:** trem de vagões, energia encadeada, eventos aleatórios, outros transportes, combustível, clima/horário.
 
 ### Pendências (fronteira aberta)
-1. **Playtest de validação (Q1–Q8)** — o próximo marco do projeto.
-2. Fórmulas do bônus superlinear por trem entregue (tuning).
-3. Número de colunas (pendências visuais/técnicas de shell em curso — fora deste documento).
-4. Direção estética e pipeline de arte.
-5. Plataforma-alvo primária e engine.
+1. **Playtest de validação (Q1–Q8)** — instrumento DURANTE o MVP2 (o veredito do designer é o sinal principal; os externos afinam).
+2. Número de colunas (pendências visuais/técnicas de shell em curso — fora deste documento).
+3. Direção estética e pipeline de arte.
+4. Plataforma-alvo primária e engine (portais — ver `spec-tecnica-publicacao.md`).
+5. Preços vivos da loja (valores são tuning; a régua é fechada — D28/D29).
 
-*Resolvidas nesta versão: caso colisão+descarrilamento simultâneo (D7 — 1 vida por evento); densidade alvo (D20 — 2–3); comportamento do tutorial (D1); entrada de trem (D13); horizonte da previsão (D21).*
+*Resolvidas em v1.3: caso colisão+descarrilamento simultâneo (D7 — 1 vida por evento); densidade alvo (D20); comportamento do tutorial (D1); entrada de trem (D13); horizonte da previsão (D21). Resolvidas em v1.4: placement e modelo do seletor (D25/D26); compressão do tutorial (D23); apresentação de conceitos (D24); fórmula do bônus (D27); preços e limites da loja (D28/D29); estética do selo (D30); farm entre sessões (D31); perda forçada fora do MVP2 (D32).*
