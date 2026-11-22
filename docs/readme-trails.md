@@ -6,7 +6,7 @@
 Puzzle de roteamento ferroviário em grade para telas de toque. Locomotivas coloridas avançam uma célula a cada ação do jogador — **1 ação = 1 passo** — e ele gira desvios, pontes e cruzamentos para entregar cada trem à estação da própria cor antes que o tabuleiro o destrua. Não basta conectar os pontos: é preciso conectá-los **no passo certo**.
 
 ## Estado atual
-**MVP2 em implementação (22/11)** — proposta `proposta-mvp2.md` v2 aprovada; decisões abertas fechadas pelo designer (D23–D32 no GDD v1.4); plano operacional `plano-implementacao-mvp2.md`. Ordem: seletor CW/CCW → economia (save/bônus/selo/loja) → tutorial 4 fases → faixa 1 (4 fases de 3 trens) → **gate «é xadrez agora?»** → faixas 2–3. O protótipo P0–P3+ (mecânica validada pelo designer em 21/11; 238 testes) é a fundação — sem reescrita. **Derrota barata é design confirmado**; o valor vem da aspiração. Playtests externos pendentes — instrumento de calibração, não bloqueio.
+**MVP2 em implementação ponta a ponta (22/11)** — decisão do designer: **sem gate por épico; o teste dele vem ao final de toda a sequência**. Proposta `proposta-mvp2.md` v2 aprovada; decisões abertas fechadas (D23–D32 no GDD v1.4); plano operacional `plano-implementacao-mvp2.md`. Ordem: seletor CW/CCW ✅ (M1, `c9ffecc`) → save+lista (M2) → bônus+selo (M3) → resgate (M4) → time-travel (M5) → tutorial 4 fases (M6) → faixa 1 (M7) → faixas 2–3 (M9). O protótipo P0–P3+ (mecânica validada; 251 testes) é a fundação — sem reescrita. **Derrota barata é design confirmado**; o valor vem da aspiração.
 
 ## Decisões-chave já fechadas
 - **Y = desvio ferroviário bidirecional:** talo → ponta ativa; qualquer ponta → talo. Toques alternam trocar-ponta-ativa ↔ girar 90° (8 estados).
