@@ -111,6 +111,70 @@ describe('HUD — glifo de volta para a lista', () => {
   });
 });
 
+describe('HUD — Time-travel na fileira (M5/D29)', () => {
+  it('fase não-tutorial tem quatro alvos ≥ 44 pt, sem sobrepor', () => {
+    for (const [width, height] of [
+      [360, 640],
+      [320, 568],
+    ] as const) {
+      const layout = computeLayout(width, height, P0_LEVEL.board, {
+        timeTravelVisible: true,
+      });
+
+      expect(layout.timeTravelVisible).toBe(true);
+
+      const row = [
+        layout.passButton,
+        layout.rotationButton,
+        layout.timeTravelButton,
+        layout.resetButton,
+      ];
+
+      for (const rect of row) {
+        expect(rect.width).toBeGreaterThanOrEqual(MIN_TOUCH);
+        expect(rect.height).toBeGreaterThanOrEqual(MIN_TOUCH);
+        expect(rect.x).toBeGreaterThanOrEqual(0);
+        expect(rect.y).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.width).toBeLessThanOrEqual(layout.width + 0.001);
+        expect(rect.y + rect.height).toBeLessThanOrEqual(
+          layout.height + 0.001,
+        );
+      }
+
+      for (const [index, rect] of row.entries()) {
+        expect(
+          hudTargetAtPoint(
+            layout,
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        ).toBe(['pass', 'rotation', 'timeTravel', 'reset'][index]);
+      }
+    }
+  });
+
+  it('fase tutorial mantém três alvos e nenhum Time-travel', () => {
+    const layout = computeLayout(360, 640, P0_LEVEL.board);
+
+    expect(layout.timeTravelVisible).toBe(false);
+    expect(layout.timeTravelButton.width).toBe(0);
+
+    for (const [target, rect] of [
+      ['pass', layout.passButton],
+      ['rotation', layout.rotationButton],
+      ['reset', layout.resetButton],
+    ] as const) {
+      expect(
+        hudTargetAtPoint(
+          layout,
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+        ),
+      ).toBe(target);
+    }
+  });
+});
+
 describe('HUD — prompt de resgate (M4/D28)', () => {
   it('os dois botões dividem a fileira em metades ≥ 44 pt, sem sobrepor', () => {
     for (const [width, height] of [

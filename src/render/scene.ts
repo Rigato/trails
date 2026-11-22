@@ -95,6 +95,14 @@ export interface Scene {
   readonly rescueEnabled: boolean;
   /** Início do flash do resgate indisponível (D3); `null` = sem flash. */
   readonly rescueDeniedAt: number | null;
+  /** Preço do Time-travel (M5/D29). */
+  readonly timeTravelPrice: number;
+  /** Time-travel comprável agora? (passo > 0 + carteira + run ativa) */
+  readonly timeTravelEnabled: boolean;
+  /** Início do pulso do glifo do Time-travel na compra; `null` = sem pulso. */
+  readonly timeTravelPulseAt: number | null;
+  /** Início do flash do Time-travel indisponível (D3); `null` = sem flash. */
+  readonly timeTravelDeniedAt: number | null;
 }
 
 /** Desenha um quadro inteiro. */
@@ -225,6 +233,10 @@ export function drawScene(
     rescuePrice: scene.rescuePrice,
     rescueEnabled: scene.rescueEnabled,
     rescueDeniedAt: scene.rescueDeniedAt,
+    timeTravelPrice: scene.timeTravelPrice,
+    timeTravelEnabled: scene.timeTravelEnabled,
+    timeTravelPulseAt: scene.timeTravelPulseAt,
+    timeTravelDeniedAt: scene.timeTravelDeniedAt,
   });
   ctx.restore();
 }

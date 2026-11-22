@@ -125,6 +125,14 @@ export interface Tuning {
   /** Limite de resgates por run (D28): 1. Tuning, como o preço. */
   readonly rescueLimitPerRun: number;
   /**
+   * Preço do Time-travel (D29) — em moedas da carteira persistente.
+   *
+   * Cada compra reverte UM passo integral; desfazer a run inteira fica
+   * proibitivo por acumulação, nunca por limite artificial. A régua «salvar
+   * 1 passo crítico deve ser tentador» é fechada; o valor é tuning.
+   */
+  readonly timeTravelPrice: number;
+  /**
    * Pulso de escala do glifo do seletor CW/CCW ao alternar o sentido (D25).
    * Ferramenta, não turno: o pulso confirma a troca sem avançar passo.
    */
@@ -171,6 +179,8 @@ export const TUNING: Tuning = {
   /** D28: resgate 1 por run, ~8 moedas; vida não volta. */
   rescuePrice: 8,
   rescueLimitPerRun: 1,
+  /** D29: time-travel fixo por uso (1 passo integral por compra). */
+  timeTravelPrice: 4,
   selectorPulseMs: 350,
   derailExitMs: 300,
   tunnelFadeMs: 160,

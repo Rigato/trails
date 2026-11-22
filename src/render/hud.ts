@@ -25,6 +25,12 @@
  * apenas pisca (D3). Tutorial mantém o botão único de largura total; `won` e
  * `lost` não mudam (D11: resgate não devolve vida).
  *
+ * M5/D29: fase não-tutorial ganha o Time-travel na fileira — botão compacto
+ * com a seta de retorno e o preço («⟲ 4»), entre o seletor e «Recomeçar».
+ * Opaco quando não aplicável (passo 0, carteira curta, run encerrada); toque
+ * nele apenas pisca (D3). Na compra o glifo pulsa na família do seletor. O
+ * tutorial mantém a fileira de três alvos (loja indisponível, D23).
+ *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
  * E8: a marca que acabou de esvaziar pulsa (cresce + anel, `lifeLostPulseMs`),
@@ -78,6 +84,14 @@ export interface HudContext {
   readonly rescueEnabled: boolean;
   /** Início do flash de toque no resgate indisponível; `null` = sem flash. */
   readonly rescueDeniedAt: number | null;
+  /** Preço do Time-travel (M5/D29), exibido no botão. */
+  readonly timeTravelPrice: number;
+  /** O Time-travel é comprável agora (passo > 0 + carteira + run ativa)? */
+  readonly timeTravelEnabled: boolean;
+  /** Início do pulso do glifo na compra do Time-travel; `null` = sem pulso. */
+  readonly timeTravelPulseAt: number | null;
+  /** Início do flash no Time-travel indisponível (D3); `null` = sem flash. */
+  readonly timeTravelDeniedAt: number | null;
 }
 
 /**
@@ -131,6 +145,11 @@ export function drawHud(
 
   drawButton(ctx, layout, layout.resetButton, 'Recomeçar', false, true);
   drawRotationButton(ctx, layout, context);
+
+  if (layout.timeTravelVisible) {
+    drawTimeTravelButton(ctx, layout, context);
+  }
+
   drawButton(ctx, layout, layout.passButton, 'Passar turno', true, true);
 }
 
@@ -526,6 +545,126 @@ function selectorPulseScale(pulseAt: number | null, now: number): number {
   }
 
   return 1 + 0.2 * Math.sin(Math.PI * (elapsed / duration));
+}
+
+/**
+ * «⟲ preço» — Time-travel (M5/D29).
+ *
+ * Botão compacto contornado, ao lado do seletor. A seta de retorno fica à
+ * esquerda e o preço pequeno à direita; na compra o glifo pulsa na família
+ * `selectorPulseMs`, confirmando a reversão sem texto. Indisponível (passo 0,
+ * carteira curta ou run encerrada) fica opaco; o toque pisca a superfície (D3)
+ * sem comprar.
+ */
+function drawTimeTravelButton(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  context: HudContext,
+): void {
+  const rect = layout.timeTravelButton;
+
+  if (rect.width <= 0) {
+    return;
+  }
+
+  const scale = selectorPulseScale(context.timeTravelPulseAt, context.now);
+  const gx = rect.x + rect.width * 0.33;
+  const cy = rect.y + rect.height / 2;
+  const radius = Math.min(rect.width, rect.height) * 0.21;
+  const priceSize = Math.max(10, layout.buttonFontSize * 0.72);
+
+  ctx.save();
+  ctx.globalAlpha = context.timeTravelEnabled ? 1 : 0.42;
+  drawButtonSurface(ctx, rect, false);
+
+  drawTimeTravelGlyph(ctx, gx, cy, radius, scale);
+
+  ctx.fillStyle = PALETTE.track;
+  ctx.font = `600 ${priceSize}px ${FONT_STACK}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(
+    String(context.timeTravelPrice),
+    rect.x + rect.width * 0.52,
+    cy + 0.5,
+    rect.width * 0.4,
+  );
+  ctx.restore();
+
+  if (context.timeTravelDeniedAt === null) {
+    return;
+  }
+
+  const elapsed = context.now - context.timeTravelDeniedAt;
+
+  if (!(elapsed >= 0) || elapsed >= CELL_FLASH_MS) {
+    return;
+  }
+
+  const intensity = 1 - elapsed / CELL_FLASH_MS;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    rect.height * 0.3,
+  );
+  ctx.globalAlpha = 0.16 * intensity;
+  ctx.fillStyle = PALETTE.track;
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * Seta de retorno do Time-travel, desenhada por código.
+ *
+ * Traço em U: sobe pela direita, curva no topo e desce pela esquerda, com a
+ * cabeça apontando para baixo — «voltar atrás». Distinta da seta circular do
+ * seletor (que indica o sentido do giro) e sem dependência de fonte externa.
+ */
+function drawTimeTravelGlyph(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  scale: number,
+): void {
+  if (radius <= 0) {
+    return;
+  }
+
+  const lineWidth = Math.max(1.5, radius * 0.24);
+  const xr = radius * 0.7;
+  const top = -radius * 0.8;
+  const bottom = radius * 0.75;
+  const head = radius * 0.45;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = PALETTE.track;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(xr, bottom);
+  ctx.lineTo(xr, top);
+  ctx.quadraticCurveTo(xr, top - radius * 0.55, 0, top - radius * 0.55);
+  ctx.quadraticCurveTo(-xr, top - radius * 0.55, -xr, top);
+  ctx.lineTo(-xr, bottom);
+  ctx.stroke();
+
+  // Cabeça na ponta esquerda, apontando para baixo (o retorno).
+  ctx.beginPath();
+  ctx.moveTo(-xr - head, bottom - head * 1.2);
+  ctx.lineTo(-xr, bottom);
+  ctx.lineTo(-xr + head, bottom - head * 1.2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**

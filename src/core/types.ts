@@ -712,6 +712,13 @@ export interface Prediction {
  * ou trem não descarrilado devolve `undefined` sem efeito. A re-entrada segue
  * as regras gerais do próximo passo (D13), inclusive colisão.
  *
+ * `undoStep` é o Time-travel (D29): restaura o snapshot ANTERIOR à última ação
+ * que avançou passo, integralmente (board, trens, vidas, moedas, `step` e
+ * `status`). Recusa com `undefined`, sem efeito, em `step === 0`, `won` e
+ * `lost`; `deadEnd` é permitido (reverte o passo fatal). O histórico é da run:
+ * `reset` o esvazia e `rescue` não empilha (não é passo). A compra do
+ * consumível é do shell — o core só restaura o snapshot.
+ *
  * `reset` restaura o estado inicial do layout e devolve o novo snapshot.
  * `setup(layout)` é a fábrica correspondente em `game.ts`.
  */
@@ -720,6 +727,7 @@ export interface Game {
   apply(action: Action): ApplyResult;
   prediction(trainId: TrainId, maxSteps?: number): Prediction | undefined;
   rescue(trainId: TrainId): GameState | undefined;
+  undoStep(): GameState | undefined;
   reset(): GameState;
 }
 

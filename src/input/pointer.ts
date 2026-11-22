@@ -15,6 +15,10 @@
  * `onPhaseCardTap(index)` (quem decide bloqueado/desbloqueado é o `main.ts`);
  * em jogo, o glifo do cabeçalho vira `onListBack()`. O modo entra por callback
  * — o input continua sem guardar estado de jogo.
+ *
+ * M5/D29: o alvo `timeTravel` do layout chama `onTimeTravel` na hora; quem
+ * valida passo/carteira e cobra a compra é o shell. Em tutorial o layout nem
+ * expõe o alvo (fileira de três botões).
  */
 
 import type { Action, RotationDirection } from '../core/types';
@@ -71,6 +75,11 @@ export interface PointerInputHandlers {
   readonly isRescuePrompt?: () => boolean;
   /** Toque em «Resgatar»; o shell valida carteira/limite e aplica o efeito. */
   readonly onRescue?: () => void;
+  /**
+   * Toque no Time-travel (M5/D29); o shell valida passo/carteira e aplica a
+   * compra. O alvo só existe no layout de fase não-tutorial.
+   */
+  readonly onTimeTravel?: () => void;
 }
 
 function containsPoint(rect: Rect, x: number, y: number): boolean {
@@ -166,6 +175,11 @@ export function attachPointerInput(
 
     if (hudTarget === 'rotation') {
       handlers.onRotationToggle();
+      return;
+    }
+
+    if (hudTarget === 'timeTravel') {
+      handlers.onTimeTravel?.();
       return;
     }
 

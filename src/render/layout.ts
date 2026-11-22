@@ -22,15 +22,17 @@ export interface Rect {
  * Alvo de toque do HUD.
  *
  * `rotation` é o botão-ferramenta do seletor CW/CCW (D22/D25): alternar o
- * sentido é imediato e não passa pelo buffer. `list` é a saída para a lista de
- * fases (M2): abandona a run sem confirmar e sem tocar no save. `rescue` e
- * `surrender` só existem no prompt de não-vencível (M4/D28): resgatar o último
- * trem perdido ou desistir da run.
+ * sentido é imediato e não passa pelo buffer. `timeTravel` é a compra do
+ * Time-travel (M5/D29), só na fileira de fases não-tutorial. `list` é a saída
+ * para a lista de fases (M2): abandona a run sem confirmar e sem tocar no
+ * save. `rescue` e `surrender` só existem no prompt de não-vencível (M4/D28):
+ * resgatar o último trem perdido ou desistir da run.
  */
 export type HudTarget =
   | 'pass'
   | 'reset'
   | 'rotation'
+  | 'timeTravel'
   | 'list'
   | 'rescue'
   | 'surrender';
@@ -53,6 +55,14 @@ export interface SceneLayout {
   readonly resetButton: Rect;
   /** Seletor CW/CCW compacto, entre os dois botões (D25). */
   readonly rotationButton: Rect;
+  /**
+   * Time-travel (M5/D29): segundo botão compacto da fileira, entre o seletor e
+   * «Recomeçar». Só existe/detecta toque quando `timeTravelVisible` é `true`
+   * (fase não-tutorial); nas fases de ensino a fileira segue com três alvos.
+   */
+  readonly timeTravelButton: Rect;
+  /** A fileira inferior tem o alvo de Time-travel? (fase não-tutorial) */
+  readonly timeTravelVisible: boolean;
   /**
    * «Resgatar · preço» — metade esquerda da fileira inferior no prompt de
    * não-vencível (D28). Só é desenhado/hit-testado nesse prompt; nos demais
@@ -115,7 +125,12 @@ function clamp(value: number, min: number, max: number): number {
  * centrada; no desktop a faixa portrait já é estreita, então a célula cresce
  * junto com a tela. O rodapé reserva a altura mínima dos botões.
  */
-export function computeLayout(width: number, height: number, board: Board): SceneLayout {
+export function computeLayout(
+  width: number,
+  height: number,
+  board: Board,
+  options?: { readonly timeTravelVisible?: boolean },
+): SceneLayout {
   const pad = clamp(width * 0.04, PAD_MIN, PAD_MAX);
   const headerHeight = clamp(width * 0.05, HEADER_MIN, HEADER_MAX);
   const gap = clamp(width * 0.03, GAP_MIN, GAP_MAX);
@@ -153,19 +168,32 @@ export function computeLayout(width: number, height: number, board: Board): Scen
   const boardX = (width - boardWidth) / 2;
   const boardY = contentTop + Math.max(0, (contentHeight - boardHeight) / 2);
 
-  // Fileira inferior: «Passar turno» | seletor CW/CCW | «Recomeçar» (D25),
-  // preservando as posições que os dois botões já tinham. O seletor é
-  // quadrado e compacto, mas nunca abaixo do alvo mínimo de toque
-  // (`buttonHeight` já parte de `buttonMinCssPt`); os dois botões de texto
-  // dividem o resto da largura.
+  // Fileira inferior. Fase de ensino (D23): «Passar turno» | seletor CW/CCW |
+  // «Recomeçar», como sempre. Fase não-tutorial (M5/D29): o Time-travel entra
+  // como segundo botão compacto — «Passar turno» | seletor | ⟲ preço |
+  // «Recomeçar». Os dois botões de texto dividem o resto da largura; os
+  // compactos são quadrados e nunca abaixo do alvo mínimo de toque
+  // (`buttonHeight` já parte de `buttonMinCssPt`).
+  const timeTravelVisible = options?.timeTravelVisible === true;
   const buttonRowWidth = Math.max(0, usableWidth);
   const buttonRowX = (width - buttonRowWidth) / 2;
   const buttonY = height - pad - buttonHeight;
   const rotationWidth = buttonHeight;
+  const toolCount = timeTravelVisible ? 2 : 1;
   const buttonWidth = Math.max(
     0,
-    (buttonRowWidth - rotationWidth - gap * 2) / 2,
+    (buttonRowWidth - rotationWidth * toolCount - gap * (toolCount + 1)) / 2,
   );
+  const rotationX = buttonRowX + buttonWidth + gap;
+  const timeTravelButton: Rect = {
+    x: rotationX + rotationWidth + gap,
+    y: buttonY,
+    width: timeTravelVisible ? rotationWidth : 0,
+    height: buttonHeight,
+  };
+  const resetX = timeTravelVisible
+    ? timeTravelButton.x + timeTravelButton.width + gap
+    : rotationX + rotationWidth + gap;
   const promptButtonWidth = Math.max(0, (buttonRowWidth - gap) / 2);
 
   // Glifo da lista: alvo quadrado de 44 pt ancorado no canto esquerdo do
@@ -195,13 +223,15 @@ export function computeLayout(width: number, height: number, board: Board): Scen
       height: buttonHeight,
     },
     rotationButton: {
-      x: buttonRowX + buttonWidth + gap,
+      x: rotationX,
       y: buttonY,
       width: rotationWidth,
       height: buttonHeight,
     },
+    timeTravelButton,
+    timeTravelVisible,
     resetButton: {
-      x: buttonRowX + buttonWidth + gap + rotationWidth + gap,
+      x: resetX,
       y: buttonY,
       width: buttonWidth,
       height: buttonHeight,
@@ -395,6 +425,13 @@ export function hudTargetAtPoint(
 
   if (containsPoint(layout.rotationButton, x, y)) {
     return 'rotation';
+  }
+
+  if (
+    layout.timeTravelVisible &&
+    containsPoint(layout.timeTravelButton, x, y)
+  ) {
+    return 'timeTravel';
   }
 
   return null;

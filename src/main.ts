@@ -35,6 +35,13 @@
  *    não devolve a vida, deduz a carteira na hora (persistida) e marca
  *    `consumableUsed` (selo bloqueado). O tutorial mantém o «Recomeçar» (D1);
  *    `won`/`lost` não oferecem resgate (D11).
+ * 10. M5/D29: fase não-tutorial ganha «⟲ preço» na fileira; a compra deduz a
+ *    carteira NA HORA, marca `consumableUsed` e chama `game.undoStep()` — o
+ *    core troca o snapshot (reversão integral: peças, trens, moedas, mortes,
+ *    vidas, entregas, `step` e `status`). A animação em curso é cancelada e o
+ *    buffer é limpo ANTES de redesenhar: nenhuma ação pré-reversão sobrevive.
+ *    Opaco em passo 0, carteira curta ou run encerrada; o deadEnd pertence ao
+ *    prompt do M4 e o tutorial não vê o botão (D23).
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
  * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
@@ -231,6 +238,13 @@ let lastDerailedId: TrainId | null = null;
 /** Início do flash do resgate indisponível; `null` = sem flash (D3). */
 let rescueDeniedAt: number | null = null;
 
+/** Time-travels comprados nesta run (M5/D29); zera em setup/reset/troca. */
+let undosUsed = 0;
+/** Início do pulso do glifo do Time-travel na compra; `null` = sem pulso. */
+let timeTravelPulseAt: number | null = null;
+/** Início do flash do Time-travel indisponível; `null` = sem flash (D3). */
+let timeTravelDeniedAt: number | null = null;
+
 /** Resumo do banco da última vitória (painel + hook); `null` fora de vitória. */
 let lastVictoryBanking: VictorySummary | null = null;
 
@@ -374,7 +388,9 @@ let animation: StepAnimation | null = null;
 let predictions: Prediction[] = collectPredictions();
 /** Peça do primeiro giro que pulsa no passo 0 (D6); `null` depois da 1ª ação. */
 let firstHint: CellPos | null = firstHintTarget(game.state, predictions);
-let layout: SceneLayout = computeLayout(1, 1, game.state.board);
+let layout: SceneLayout = computeLayout(1, 1, game.state.board, {
+  timeTravelVisible: level.tutorial !== true,
+});
 /** Layout da home; recalculado no resize, mesmo enquanto a lista está oculta. */
 let phaseListLayout: PhaseListLayout = computePhaseListLayout(
   1,
@@ -431,6 +447,42 @@ function rescueAvailable(): boolean {
 
   return game.state.trains.some(
     (train) => train.id === lastDerailedId && train.status.kind === 'derailed',
+  );
+}
+
+/**
+ * O estado atual permite desfazer um passo? (M5/D29)
+ *
+ * Mesma régua do core: há passo para reverter e a run não terminou em
+ * `won`/`lost`. `deadEnd` permite (é o passo fatal), embora o shell não ofereça
+ * o botão ali — o prompt do resgate (M4) é o dono da fileira.
+ */
+function undoAllowedByState(): boolean {
+  return (
+    game.state.step > 0 &&
+    game.state.status !== 'won' &&
+    game.state.status !== 'lost'
+  );
+}
+
+/** A fase atual mostra a fileira com o Time-travel? (loja fora do tutorial) */
+function timeTravelVisible(): boolean {
+  return level.tutorial !== true;
+}
+
+/**
+ * O Time-travel é comprável AGORA? (M5/D29)
+ *
+ * Fase não-tutorial, run ativa (`playing`), ao menos um passo no histórico e
+ * carteira para o preço. `won`/`lost` e o prompt de `deadEnd` não têm o botão;
+ * passo 0 e carteira curta o desenham opaco (o toque só pisca, D3).
+ */
+function timeTravelAvailable(): boolean {
+  return (
+    timeTravelVisible() &&
+    game.state.status === 'playing' &&
+    game.state.step > 0 &&
+    saveState.wallet >= TUNING.timeTravelPrice
   );
 }
 
@@ -807,6 +859,9 @@ function onReset(): void {
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
+  undosUsed = 0;
+  timeTravelPulseAt = null;
+  timeTravelDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -840,6 +895,9 @@ function loadPhase(index: number): void {
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
+  undosUsed = 0;
+  timeTravelPulseAt = null;
+  timeTravelDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -848,7 +906,9 @@ function loadPhase(index: number): void {
   game = setup(level);
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
-  layout = computeLayout(layout.width, layout.height, game.state.board);
+  layout = computeLayout(layout.width, layout.height, game.state.board, {
+    timeTravelVisible: timeTravelVisible(),
+  });
   draw(performance.now());
 }
 
@@ -907,6 +967,9 @@ function returnToList(): void {
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
+  undosUsed = 0;
+  timeTravelPulseAt = null;
+  timeTravelDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -985,6 +1048,72 @@ function onRescue(): void {
   if (train !== undefined) {
     pulses.push({ cell: entry.cell, color: train.color, startedAt: now });
   }
+
+  predictions = collectPredictions();
+  firstHint = firstHintTarget(game.state, predictions);
+  draw(now);
+}
+
+/**
+ * Compra do Time-travel (M5/D29).
+ *
+ * A carteira é deduzida e persistida NA HORA (valor entre sessões), e
+ * `consumableUsed` bloqueia o selo da run. O core restaura integralmente o
+ * snapshot anterior à última ação; o shell cancela a animação em curso e limpa
+ * o buffer — nenhuma ação enfileirada sobrevive à reversão. Também limpa os
+ * feedbacks do passo desfeito (fantasmas de descarrilamento, pulses de entrega,
+ * vida e moeda): o passo deixou de existir.
+ *
+ * Os contadores da run (`undosUsed`, `rescuesUsed`, `consumableUsed`) NÃO
+ * voltam: o undo não «descompra» o que já foi comprado. Sem carteira ou sem
+ * passo para reverter o botão já está opaco; o toque apenas pisca (D3).
+ */
+function onTimeTravel(): void {
+  const now = performance.now();
+
+  if (!timeTravelAvailable()) {
+    timeTravelDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  const walletAfter = spendFromWallet(saveState.wallet, TUNING.timeTravelPrice);
+
+  if (walletAfter === null) {
+    timeTravelDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  // Só cobra depois que o core confirma a reversão. O botão já foi validado,
+  // mas a fachada é a autoridade final do que pode ser desfeito.
+  const restored = game.undoStep();
+
+  if (restored === undefined) {
+    timeTravelDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  buffer.clear();
+  animation = null;
+  pendingStepAt = null;
+  flashes = [];
+  pulses = [];
+  exits = [];
+  lifePulses = [];
+  coinPulses = [];
+  coinTickAt = null;
+
+  // Persistência imediata só da carteira; desbloqueio/selo continuam sendo
+  // escritos apenas na vitória. Uma falha de storage mantém o saldo em memória.
+  saveState = { ...saveState, wallet: walletAfter };
+  storage.persist(saveState);
+
+  consumableUsed = true;
+  undosUsed += 1;
+  timeTravelPulseAt = now;
+  timeTravelDeniedAt = null;
 
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
@@ -1291,6 +1420,10 @@ function draw(now: number): void {
     rescuePrice: TUNING.rescuePrice,
     rescueEnabled: rescueAvailable(),
     rescueDeniedAt,
+    timeTravelPrice: TUNING.timeTravelPrice,
+    timeTravelEnabled: timeTravelAvailable(),
+    timeTravelPulseAt,
+    timeTravelDeniedAt,
   });
 
   // M3: a leitura econômica da run vive no painel sobre o tabuleiro; o botão
@@ -1325,6 +1458,13 @@ function frame(timestamp: number): void {
     timestamp - rescueDeniedAt >= CELL_FLASH_MS
   ) {
     rescueDeniedAt = null;
+  }
+
+  if (
+    timeTravelDeniedAt !== null &&
+    timestamp - timeTravelDeniedAt >= CELL_FLASH_MS
+  ) {
+    timeTravelDeniedAt = null;
   }
 
   if (pendingStepAt !== null && timestamp >= pendingStepAt) {
@@ -1368,7 +1508,9 @@ function resize(): void {
 
   // Desenhe sempre em px CSS; o transform escala para o backing store.
   ctx.setTransform(pixelWidth / cssWidth, 0, 0, pixelHeight / cssHeight, 0, 0);
-  layout = computeLayout(cssWidth, cssHeight, game.state.board);
+  layout = computeLayout(cssWidth, cssHeight, game.state.board, {
+    timeTravelVisible: timeTravelVisible(),
+  });
   phaseListLayout = computePhaseListLayout(
     cssWidth,
     cssHeight,
@@ -1389,6 +1531,7 @@ attachPointerInput(canvas, {
   isFinished,
   isRescuePrompt: rescuePromptVisible,
   onRescue,
+  onTimeTravel,
   getRotationDirection: () => rotationDirection,
   onRotationToggle,
 });
@@ -1449,6 +1592,14 @@ declare global {
       readonly rescuePrice: number;
       /** Trem do último `trainDerailed` da run; alvo do resgate. */
       readonly lastDerailedId: TrainId | null;
+      /** O estado permite desfazer um passo (M5/D29): passo > 0 e run não encerrada. */
+      readonly canUndo: boolean;
+      /** Profundidade do histórico da run (M5) = `state.step`. */
+      readonly historyDepth: number;
+      /** Preço do Time-travel (tuning/D29). */
+      readonly timeTravelPrice: number;
+      /** Time-travels comprados nesta run (M5/D29), zerado a cada run. */
+      readonly undosUsed: number;
       /** A fase atual é de ensino (D23)? */
       readonly tutorialPhase: boolean;
       /** Banco da última vitória (M3); `null` após reset/troca de fase. */
@@ -1544,6 +1695,18 @@ window.__trailsDebug = {
   },
   get lastDerailedId() {
     return lastDerailedId;
+  },
+  get canUndo() {
+    return undoAllowedByState();
+  },
+  get historyDepth() {
+    return game.state.step;
+  },
+  get timeTravelPrice() {
+    return TUNING.timeTravelPrice;
+  },
+  get undosUsed() {
+    return undosUsed;
   },
   get tutorialPhase() {
     return level.tutorial === true;

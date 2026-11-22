@@ -551,14 +551,22 @@ function applyToState(
  *
  * `layout` é validado aqui; um layout inválido lança com mensagem clara. A
  * fachada devolve o snapshot atual em `state`, aplica ações com `apply`,
- * calcula previsões com `prediction`, restaura o início com `reset` e compra o
- * resgate de um trem perdido com `rescue` (D28).
+ * calcula previsões com `prediction`, restaura o início com `reset`, compra o
+ * resgate de um trem perdido com `rescue` (D28) e reverte o último passo com
+ * `undoStep` (D29).
+ *
+ * Histórico do Time-travel (D29): cada `apply` que AVANÇA passo empilha o
+ * snapshot anterior. Como `GameState` é imutável e o passo só cria estruturas
+ * novas, o custo é a referência, não uma cópia profunda. A pilha é da RUN —
+ * `reset` a esvazia, `rescue` não empilha (não é passo) e a compra de undo não
+ * deixa rastro nela: desfazer repetido anda um passo por compra.
  */
 export function setup(layout: LevelLayout): Game {
   validateLayout(layout);
 
   const coinCells = layout.coins ?? [];
   const entriesById = new Map<TrainId, EntryPoint>();
+  const history: GameState[] = [];
 
   for (const trainSetup of layout.trains) {
     entriesById.set(trainSetup.id, trainSetup.entry);
@@ -572,7 +580,13 @@ export function setup(layout: LevelLayout): Game {
     },
 
     apply(action) {
+      const previous = state;
       const result = applyToState(state, action, coinCells);
+
+      if (result.advanced) {
+        history.push(previous);
+      }
+
       state = result.state;
       return result;
     },
@@ -636,7 +650,35 @@ export function setup(layout: LevelLayout): Game {
       return state;
     },
 
+    /**
+     * Time-travel (D29): volta ao snapshot anterior à última ação.
+     *
+     * A restauração é INTEGRAL porque o snapshot é completo: board (peças),
+     * trens (posição/status, inclusive `justTunneled`), vidas, moedas, `step` e
+     * `status`. Recusa sem efeito em `step === 0`, `won` e `lost`; `deadEnd` é
+     * permitido — é a reversão do passo fatal, não uma derrota consumada.
+     *
+     * O resgate (M4) NÃO entra no histórico: depois de resgatar e dar um passo,
+     * o undo volta ao snapshot PÓS-resgate (trem `waiting`), não ao estado
+     * anterior à morte. Não há reembolso da vida nem das moedas gastas.
+     */
+    undoStep() {
+      if (state.step === 0 || state.status === 'won' || state.status === 'lost') {
+        return undefined;
+      }
+
+      const previous = history.pop();
+
+      if (previous === undefined) {
+        return undefined;
+      }
+
+      state = previous;
+      return state;
+    },
+
     reset() {
+      history.length = 0;
       state = makeInitialState(layout);
       return state;
     },
