@@ -7,6 +7,11 @@
  * virou inválida (célula ocupada, toque nulo, jogo terminado) é descartada
  * pelo resultado `advanced === false`, sem avançar passo.
  *
+ * D26: o sentido (`Action.turn`) é capturado no enqueue e viaja DENTRO da
+ * ação. O dreno revalida só a validez — nunca o sentido: uma peça enfileirada
+ * para girar CCW continua CCW mesmo que o seletor mude antes de ela sair da
+ * fila.
+ *
  * Teto parametrizável: rajadas acima da capacidade descartam as ações mais
  * novas (as primeiras da fila são preservadas).
  */

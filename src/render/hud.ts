@@ -1,10 +1,13 @@
 /**
  * HUD desenhado no canvas: cabeçalho (fase, passo, estado, vidas) e botões.
  *
- * Em jogo, os dois botões de 44 pt são «Passar turno» e «Recomeçar». Quando a
- * run termina, os dois viram UM botão de largura total: «Próxima fase» quando
- * a vitória tem sucessora (D10), «Jogar de novo» na última fase e «Recomeçar»
- * em deadEnd/lost. O caminho para seguir/rejogar fica óbvio sem menu.
+ * Em jogo, a fileira inferior tem três alvos de ≥ 44 pt: «Passar turno», o
+ * seletor CW/CCW compacto no meio (D22/D25) e «Recomeçar». O seletor é
+ * ferramenta, não turno (D26): o glifo de seta circular mostra o sentido ativo
+ * (↻ CW / ↺ CCW) e pulsa ao alternar. Quando a run termina, os três viram UM
+ * botão de largura total: «Próxima fase» quando a vitória tem sucessora (D10),
+ * «Jogar de novo» na última fase e «Recomeçar» em deadEnd/lost. O caminho para
+ * seguir/rejogar fica óbvio sem menu.
  *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
@@ -12,7 +15,7 @@
  * ancorada no relógio do loop; duas perdas no mesmo passo = duas marcas.
  */
 
-import type { GameState } from '../core/types';
+import type { GameState, RotationDirection } from '../core/types';
 import { TUNING } from '../config/tuning';
 import { drawCoinGlyph, drawCoinTick } from './coin';
 import {
@@ -43,12 +46,16 @@ export interface HudContext {
   readonly coinsTotal: number;
   /** Início do último tick do contador de moedas (E13); `null` = sem tick. */
   readonly coinTickAt: number | null;
+  /** Sentido ativo do seletor CW/CCW (D22/D26). */
+  readonly rotationDirection: RotationDirection;
+  /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
+  readonly selectorPulseAt: number | null;
 }
 
 /**
- * Retângulo do botão único de fim de run: a união dos dois botões, incluindo o
- * vão central. Exportado para o hit-test do input usar exatamente a mesma área
- * que o desenho.
+ * Retângulo do botão único de fim de run: a união dos dois botões de texto,
+ * incluindo o vão central e o seletor no meio. Exportado para o hit-test do
+ * input usar exatamente a mesma área que o desenho.
  */
 export function fullWidthHudButton(layout: SceneLayout): Rect {
   const left = layout.passButton;
@@ -89,6 +96,7 @@ export function drawHud(
   }
 
   drawButton(ctx, layout, layout.resetButton, 'Recomeçar', false, true);
+  drawRotationButton(ctx, layout, context);
   drawButton(ctx, layout, layout.passButton, 'Passar turno', true, true);
 }
 
@@ -310,6 +318,30 @@ function drawLifeMarks(
   ctx.restore();
 }
 
+/** Superfície de um botão do HUD: preenchido (primário) ou contornado. */
+function drawButtonSurface(
+  ctx: CanvasRenderingContext2D,
+  rect: Rect,
+  primary: boolean,
+  accent?: string,
+): void {
+  const radius = rect.height * 0.3;
+
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+
+  if (primary) {
+    ctx.fillStyle = accent ?? PALETTE.track;
+    ctx.fill();
+  } else {
+    ctx.fillStyle = PALETTE.background;
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.track;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
 function drawButton(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
@@ -319,27 +351,11 @@ function drawButton(
   enabled: boolean,
   accent?: string,
 ): void {
-  const radius = rect.height * 0.3;
-
   ctx.save();
   ctx.globalAlpha = enabled ? 1 : 0.42;
+  drawButtonSurface(ctx, rect, primary, accent);
 
-  ctx.beginPath();
-  ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
-
-  if (primary) {
-    ctx.fillStyle = accent ?? PALETTE.track;
-    ctx.fill();
-    ctx.fillStyle = PALETTE.background;
-  } else {
-    ctx.fillStyle = PALETTE.background;
-    ctx.fill();
-    ctx.strokeStyle = PALETTE.track;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = PALETTE.track;
-  }
-
+  ctx.fillStyle = primary ? PALETTE.background : PALETTE.track;
   ctx.font = `600 ${layout.buttonFontSize}px ${FONT_STACK}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -349,5 +365,118 @@ function drawButton(
     rect.y + rect.height / 2 + 0.5,
     rect.width * 0.86,
   );
+  ctx.restore();
+}
+
+/**
+ * Botão-ferramenta do seletor CW/CCW (D22/D25).
+ *
+ * Mesma superfície contornada do «Recomeçar»; o conteúdo é só o glifo de seta
+ * circular grande na cor estrutural do HUD. O pulso de escala (`selectorPulseMs`)
+ * confirma a troca de sentido sem avançar passo — é ferramenta, não turno (D26).
+ */
+function drawRotationButton(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  context: HudContext,
+): void {
+  const rect = layout.rotationButton;
+
+  ctx.save();
+  drawButtonSurface(ctx, rect, false);
+
+  const scale = selectorPulseScale(context.selectorPulseAt, context.now);
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const radius = Math.min(rect.width, rect.height) * 0.27;
+
+  drawRotationGlyph(ctx, cx, cy, radius, context.rotationDirection, scale);
+  ctx.restore();
+}
+
+/**
+ * Intensidade do pulso do seletor, em escala (1 = repouso).
+ *
+ * Mesma curva da família dos pulses (seno de 0 a π): sobe e volta uma vez na
+ * janela `selectorPulseMs`. Janela desligada/vencida = repouso.
+ */
+function selectorPulseScale(pulseAt: number | null, now: number): number {
+  const duration = TUNING.selectorPulseMs;
+
+  if (pulseAt === null || !(duration > 0)) {
+    return 1;
+  }
+
+  const elapsed = now - pulseAt;
+
+  if (!(elapsed >= 0) || elapsed >= duration) {
+    return 1;
+  }
+
+  return 1 + 0.2 * Math.sin(Math.PI * (elapsed / duration));
+}
+
+/**
+ * Seta circular do seletor, desenhada por código (arcos + cabeça de seta).
+ *
+ * O anel tem uma abertura no topo; a cabeça fica na ponta do sentido ativo e
+ * aponta para dentro da abertura, então ↻ e ↺ são a mesma geometria com a seta
+ * de um lado ou do outro — sem fonte, glifo de texto ou dependência externa.
+ * `scale` é o pulso de alternância, aplicado só ao glifo.
+ */
+function drawRotationGlyph(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  direction: RotationDirection,
+  scale: number,
+): void {
+  if (radius <= 0) {
+    return;
+  }
+
+  const gapHalf = 0.32;
+  const start = -Math.PI / 2 + gapHalf;
+  const end = -Math.PI / 2 - gapHalf + Math.PI * 2;
+  const lineWidth = Math.max(1.5, radius * 0.2);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.strokeStyle = PALETTE.track;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, start, end);
+  ctx.stroke();
+
+  // CW: cabeça na ponta esquerda do anel (o traço chega por baixo e aponta
+  // para a direita, no sentido horário). CCW: cabeça na ponta direita,
+  // espelhada. Nos dois casos a ponta mira a abertura do topo.
+  const angle = direction === 'cw' ? end : start;
+  const tangent = direction === 'cw' ? 1 : -1;
+  const tipX = Math.cos(angle) * radius;
+  const tipY = Math.sin(angle) * radius;
+  // Vetor da ponta para trás do arco, para onde as duas farpas abrem.
+  const backX = Math.sin(angle) * tangent;
+  const backY = -Math.cos(angle) * tangent;
+  const head = radius * 0.48;
+  const spread = 0.62;
+
+  for (const side of [-1, 1]) {
+    const cos = Math.cos(side * spread);
+    const sin = Math.sin(side * spread);
+    const x = backX * cos - backY * sin;
+    const y = backX * sin + backY * cos;
+
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(tipX + x * head, tipY + y * head);
+    ctx.stroke();
+  }
+
   ctx.restore();
 }

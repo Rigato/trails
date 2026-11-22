@@ -104,6 +104,11 @@ export interface Tuning {
   readonly deliverPulseScale: number;
   /** Pulse na marca de vida perdida no HUD (P1/D7). */
   readonly lifeLostPulseMs: number;
+  /**
+   * Pulso de escala do glifo do seletor CW/CCW ao alternar o sentido (D25).
+   * Ferramenta, não turno: o pulso confirma a troca sem avançar passo.
+   */
+  readonly selectorPulseMs: number;
   /** Saída visual do trem descarrilado (D1). */
   readonly derailExitMs: number;
   /** Fade de entrada/saída do trem no túnel (E18); 160 ms truncado por `stepDurationMs` — nunca sobrevive ao passo, como `yToggleMs`. */
@@ -141,6 +146,7 @@ export const TUNING: Tuning = {
   deliverPulseMs: 450,
   deliverPulseScale: 1.25,
   lifeLostPulseMs: 350,
+  selectorPulseMs: 350,
   derailExitMs: 300,
   tunnelFadeMs: 160,
   firstHintPulseMs: 900,

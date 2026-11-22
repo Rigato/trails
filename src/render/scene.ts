@@ -12,6 +12,7 @@ import type {
   EntryPoint,
   GameState,
   Prediction,
+  RotationDirection,
   Train,
   TrainId,
 } from '../core/types';
@@ -82,6 +83,10 @@ export interface Scene {
   readonly coinPulses: readonly CoinPulse[];
   /** Início do tick do contador de moedas (E13); `null` = sem tick. */
   readonly coinTickAt: number | null;
+  /** Sentido ativo do seletor CW/CCW (D22/D26). */
+  readonly rotationDirection: RotationDirection;
+  /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
+  readonly selectorPulseAt: number | null;
 }
 
 /** Desenha um quadro inteiro. */
@@ -206,6 +211,8 @@ export function drawScene(
     lifePulses: scene.lifePulses,
     coinsTotal: scene.coinsTotal,
     coinTickAt: scene.coinTickAt,
+    rotationDirection: scene.rotationDirection,
+    selectorPulseAt: scene.selectorPulseAt,
   });
   ctx.restore();
 }

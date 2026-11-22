@@ -15,6 +15,10 @@
  *    previsão viva mesmo com o jogo parado;
  * 5. E8: o toggle do Y anima só a agulha (`yToggleMs`) e cada vida perdida
  *    pulsa a marca no HUD (`lifeLostPulseMs`), no mesmo relógio.
+ * 6. M1/D22–D26: o seletor CW/CCW é ferramenta, não turno — alternar muda só
+ *    o sentido dos próximos taps (capturado no enqueue), pulsa o glifo e não
+ *    toca no buffer; o estado sobrevive a reset e troca de fase. A varredura
+ *    do giro deriva o sentido real de `from.rot → to.rot` (CCW = −90°).
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
  * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
@@ -32,6 +36,8 @@ import type {
   LevelLayout,
   Piece,
   Prediction,
+  Rotation,
+  RotationDirection,
   Train,
   TrainId,
 } from './core/types';
@@ -151,6 +157,17 @@ let phaseIndex = 0;
 let level: LevelLayout = firstPhase;
 let game = setup(level);
 const buffer = new ActionBuffer(TUNING.maxBufferedActions);
+
+/**
+ * Sentido ativo do seletor CW/CCW (D22/D26).
+ *
+ * Estado de FERRAMENTA: nasce CW no boot, alterna por toque imediato e não é
+ * tocado por reset de run nem por troca de fase.
+ */
+let rotationDirection: RotationDirection = 'cw';
+
+/** Início do pulso do glifo do seletor ao alternar; `null` = sem pulso. */
+let selectorPulseAt: number | null = null;
 
 /** A fase atual tem sucessora? Decide «Próxima fase» vs. «Jogar de novo». */
 function hasNextPhase(): boolean {
@@ -499,6 +516,19 @@ function finishStep(now: number): void {
 }
 
 /**
+ * Alterna o sentido do seletor CW↔CCW (D25/D26).
+ *
+ * Executa na hora, sem `Action`, sem buffer e sem passo: é ferramenta, não
+ * turno. O pulso do glifo nasce agora; o sentido ativo só é consumido quando
+ * um tap de célula o captura no enqueue. Reset e troca de fase não tocam aqui.
+ */
+function onRotationToggle(): void {
+  rotationDirection = rotationDirection === 'cw' ? 'ccw' : 'cw';
+  selectorPulseAt = performance.now();
+  draw(selectorPulseAt);
+}
+
+/**
  * Enfileira o input. A ação só é aplicada quando o passo anterior termina —
  * nada é descartado por chegar «cedo» (§3.3); o teto de 12 protege a fila de
  * rajadas absurdas.
@@ -709,6 +739,26 @@ function buildTrainViews(now: number): TrainView[] {
   return views;
 }
 
+/**
+ * Passo angular da varredura de giro, em quartos de volta, pelo caminho CURTO.
+ *
+ * A regra já decidiu o giro (`from.rot → to.rot`); aqui só se deriva o sentido
+ * visual: +1 no CW e −1 no CCW — nunca um giro fake de +3 (270°). Como o giro
+ * é sempre 90°, o delta normalizado é exatamente ±1.
+ */
+function rotationSweepQuarters(from: Rotation, to: Rotation): number {
+  let delta = to - from;
+
+  if (delta > 2) {
+    delta -= 4;
+  }
+  if (delta < -2) {
+    delta += 4;
+  }
+
+  return delta;
+}
+
 /** Ângulo contínuo da peça que está girando (a regra já aplicou o giro). */
 function buildPieceAngles(now: number): ReadonlyMap<string, number> | undefined {
   const rotation = animation?.rotation;
@@ -726,8 +776,10 @@ function buildPieceAngles(now: number): ReadonlyMap<string, number> | undefined 
     TUNING.rotationOvershoot,
   );
   const base = (rotation.from.rot * Math.PI) / 2;
+  const sweep =
+    rotationSweepQuarters(rotation.from.rot, rotation.to.rot) * (Math.PI / 2);
 
-  return new Map([[cellKey(rotation.cell), base + progress * (Math.PI / 2)]]);
+  return new Map([[cellKey(rotation.cell), base + progress * sweep]]);
 }
 
 /**
@@ -833,6 +885,8 @@ function draw(now: number): void {
     coinsTotal: level.coins?.length ?? 0,
     coinPulses,
     coinTickAt,
+    rotationDirection,
+    selectorPulseAt,
   });
 }
 
@@ -889,6 +943,8 @@ attachPointerInput(canvas, {
   onReset,
   onFinishedAction,
   isFinished,
+  getRotationDirection: () => rotationDirection,
+  onRotationToggle,
 });
 
 window.addEventListener('resize', resize, { passive: true });
@@ -927,6 +983,8 @@ declare global {
       /** Início/fim do passo visual em andamento (QA de duração). */
       readonly stepStartedAt: number | null;
       readonly stepEndsAt: number | null;
+      /** Sentido ativo do seletor CW/CCW (M1/D22–D26), somente leitura. */
+      readonly rotationDirection: RotationDirection;
     };
   }
 }
@@ -982,6 +1040,9 @@ window.__trailsDebug = {
   },
   get stepEndsAt() {
     return animation?.endsAt ?? null;
+  },
+  get rotationDirection() {
+    return rotationDirection;
   },
 };
 

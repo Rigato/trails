@@ -16,6 +16,7 @@ import type {
   GameState,
   Piece,
   Rotation,
+  RotationDirection,
   Train,
   YPiece,
 } from './types';
@@ -29,15 +30,31 @@ const NEXT_ROTATION: Readonly<Record<Rotation, Rotation>> = {
   3: 0,
 };
 
+/** Rotação CCW (sentido anti-horário): 0→3→2→1→0. */
+const PREVIOUS_ROTATION: Readonly<Record<Rotation, Rotation>> = {
+  0: 3,
+  1: 0,
+  2: 1,
+  3: 2,
+};
+
 /**
- * Gira uma peça 90° no sentido horário.
+ * Gira uma peça 90° no sentido pedido (D22).
  *
  * Reta, curva e Y compartilham a aritmética de `rot`; no Y o braço é preservado
  * e `next` volta para `'toggle'` (o toque foi um giro). A escolha ABAB entre
- * girar e trocar o braço fica em `classifyTap`/`togglePieceArm`.
+ * girar e trocar o braço fica em `classifyTap`/`togglePieceArm` — o sentido
+ * nunca decide se o Y gira, só para onde.
+ *
+ * `turn` ausente ou `'cw'` preserva o comportamento histórico; `'ccw'` anda um
+ * quarto de volta para trás (0 → 3).
  */
-export function rotatePieceCW(piece: Piece): Piece {
-  const rot = NEXT_ROTATION[piece.rot];
+export function rotatePiece(
+  piece: Piece,
+  turn: RotationDirection = 'cw',
+): Piece {
+  const rot =
+    turn === 'ccw' ? PREVIOUS_ROTATION[piece.rot] : NEXT_ROTATION[piece.rot];
 
   switch (piece.kind) {
     case 'straight':
@@ -52,8 +69,18 @@ export function rotatePieceCW(piece: Piece): Piece {
         next: 'toggle',
       };
     case 'crossing':
-      throw new Error('rotatePieceCW: o cruzamento não gira (§3.2)');
+      throw new Error('rotatePiece: o cruzamento não gira (§3.2)');
   }
+}
+
+/**
+ * Gira uma peça 90° no sentido horário.
+ *
+ * Atalho histórico mantido para os consumidores/testes anteriores ao seletor;
+ * equivale a `rotatePiece(piece, 'cw')`.
+ */
+export function rotatePieceCW(piece: Piece): Piece {
+  return rotatePiece(piece, 'cw');
 }
 
 /**
@@ -95,10 +122,18 @@ function isFinished(state: GameState): boolean {
  * 4. vazio → `null/empty`; elemento fixo → `null/fixed`;
  * 5. cruzamento → `null/crossing` (peça sem ação, flash D3, sem passo);
  * 6. peça livre → `rotated` ou `toggled`, com a peça antes/depois. No Y, o
- *    ABAB por peça decide: `next === 'toggle'` troca o braço; `next ===
- *    'rotate'` gira 90° CW.
+ *    ABAB por peça decide: `next === 'toggle'` troca o braço;
+ *    `next === 'rotate'` gira 90° no sentido `turn` (default CW).
+ *
+ * `turn` é ortogonal ao ABAB (D26): ele define o sentido do giro, não qual
+ * ação o Y executa. Toque nulo/bloqueado permanece sem passo em qualquer
+ * sentido.
  */
-export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
+export function classifyTap(
+  state: GameState,
+  cell: CellPos,
+  turn: RotationDirection = 'cw',
+): ActionOutcome {
   if (isFinished(state)) {
     return { kind: 'ignored', reason: 'finished' };
   }
@@ -144,7 +179,7 @@ export function classifyTap(state: GameState, cell: CellPos): ActionOutcome {
     kind: 'rotated',
     cell,
     from: piece,
-    to: rotatePieceCW(piece),
+    to: rotatePiece(piece, turn),
   };
 }
 
@@ -163,7 +198,7 @@ export function classifyAction(state: GameState, action: Action): ActionOutcome 
 
   switch (action.kind) {
     case 'tap':
-      return classifyTap(state, action.cell);
+      return classifyTap(state, action.cell, action.turn ?? 'cw');
     case 'pass':
       return { kind: 'passed' };
   }

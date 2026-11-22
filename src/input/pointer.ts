@@ -5,9 +5,14 @@
  * botão e entrega `Action` do contrato (`tap`/`pass`) para a costura. Toque
  * nulo e célula ocupada também viram `tap` — quem classifica é o core, o que
  * mantém «1 ação = 1 passo» concentrado numa única autoridade.
+ *
+ * D22/D26: o botão do seletor alterna o sentido IMEDIATAMENTE (`onRotationToggle`),
+ * sem `Action` e sem buffer — é ferramenta, não turno. Cada `tap` de célula
+ * captura o sentido ativo no instante do toque (`turn`), que o buffer preserva
+ * até o dreno.
  */
 
-import type { Action } from '../core/types';
+import type { Action, RotationDirection } from '../core/types';
 import { fullWidthHudButton } from '../render/hud';
 import {
   cellAtPoint,
@@ -24,6 +29,13 @@ export interface PointerInputHandlers {
   readonly onAction: (action: Action) => void;
   /** «Recomeçar»: restaura o estado inicial do layout. */
   readonly onReset: () => void;
+  /** Sentido ativo do seletor, capturado em cada `tap` (default CW). */
+  readonly getRotationDirection: () => RotationDirection;
+  /**
+   * Alterna o sentido do seletor (D25/D26). Executa na hora: não enfileira
+   * ação, não avança passo e sobrevive a reset/troca de fase.
+   */
+  readonly onRotationToggle: () => void;
   /**
    * Ação do botão único de fim de run (D1/D5/D10). `main.ts` decide entre
    * carregar a próxima fase (vitória com sucessora), rejogar ou recomeçar a
@@ -87,6 +99,11 @@ export function attachPointerInput(
       return;
     }
 
+    if (hudTarget === 'rotation') {
+      handlers.onRotationToggle();
+      return;
+    }
+
     if (hudTarget === 'pass') {
       handlers.onAction({ kind: 'pass' });
       return;
@@ -95,7 +112,11 @@ export function attachPointerInput(
     const cell = cellAtPoint(layout, x, y);
 
     if (cell !== null) {
-      handlers.onAction({ kind: 'tap', cell });
+      handlers.onAction({
+        kind: 'tap',
+        cell,
+        turn: handlers.getRotationDirection(),
+      });
     }
   }
 

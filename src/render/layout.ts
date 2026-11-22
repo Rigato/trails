@@ -18,8 +18,13 @@ export interface Rect {
   readonly height: number;
 }
 
-/** Alvo de toque do HUD. */
-export type HudTarget = 'pass' | 'reset';
+/**
+ * Alvo de toque do HUD.
+ *
+ * `rotation` é o botão-ferramenta do seletor CW/CCW (D22/D25): alternar o
+ * sentido é imediato e não passa pelo buffer.
+ */
+export type HudTarget = 'pass' | 'reset' | 'rotation';
 
 /** Layout completo de um quadro. Recalculado a cada resize. */
 export interface SceneLayout {
@@ -33,8 +38,12 @@ export interface SceneLayout {
   readonly rows: number;
   /** Lado de uma célula em px CSS (quadrada). */
   readonly cell: number;
+  /** «Passar turno» — extremidade esquerda da fileira inferior. */
   readonly passButton: Rect;
+  /** «Recomeçar» — extremidade direita da fileira inferior. */
   readonly resetButton: Rect;
+  /** Seletor CW/CCW compacto, entre os dois botões (D25). */
+  readonly rotationButton: Rect;
   readonly headerFontSize: number;
   readonly buttonFontSize: number;
 }
@@ -97,10 +106,19 @@ export function computeLayout(width: number, height: number, board: Board): Scen
   const boardX = (width - boardWidth) / 2;
   const boardY = contentTop + Math.max(0, (contentHeight - boardHeight) / 2);
 
+  // Fileira inferior: «Passar turno» | seletor CW/CCW | «Recomeçar» (D25),
+  // preservando as posições que os dois botões já tinham. O seletor é
+  // quadrado e compacto, mas nunca abaixo do alvo mínimo de toque
+  // (`buttonHeight` já parte de `buttonMinCssPt`); os dois botões de texto
+  // dividem o resto da largura.
   const buttonRowWidth = Math.max(0, usableWidth);
   const buttonRowX = (width - buttonRowWidth) / 2;
   const buttonY = height - pad - buttonHeight;
-  const buttonWidth = Math.max(0, (buttonRowWidth - gap) / 2);
+  const rotationWidth = buttonHeight;
+  const buttonWidth = Math.max(
+    0,
+    (buttonRowWidth - rotationWidth - gap * 2) / 2,
+  );
 
   return {
     width,
@@ -116,8 +134,14 @@ export function computeLayout(width: number, height: number, board: Board): Scen
       width: buttonWidth,
       height: buttonHeight,
     },
-    resetButton: {
+    rotationButton: {
       x: buttonRowX + buttonWidth + gap,
+      y: buttonY,
+      width: rotationWidth,
+      height: buttonHeight,
+    },
+    resetButton: {
+      x: buttonRowX + buttonWidth + gap + rotationWidth + gap,
       y: buttonY,
       width: buttonWidth,
       height: buttonHeight,
@@ -195,6 +219,10 @@ export function hudTargetAtPoint(
 
   if (containsPoint(layout.resetButton, x, y)) {
     return 'reset';
+  }
+
+  if (containsPoint(layout.rotationButton, x, y)) {
+    return 'rotation';
   }
 
   return null;

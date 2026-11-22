@@ -51,6 +51,15 @@ export interface CellPos {
 /** Quarto de volta no sentido horário (CW), a partir da orientação canônica. */
 export type Rotation = 0 | 1 | 2 | 3;
 
+/**
+ * Sentido de rotação de um toque (D22).
+ *
+ * `cw` é o default histórico — 90° no sentido horário; `ccw` gira 90° no
+ * sentido anti-horário. O seletor do HUD escolhe o sentido ativo e o input o
+ * captura em cada `tap`; o core só consome o valor da ação.
+ */
+export type RotationDirection = 'cw' | 'ccw';
+
 /** Tipo de peça móvel. */
 export type PieceKind = 'straight' | 'curve' | 'y' | 'crossing';
 
@@ -98,8 +107,10 @@ export interface CurvePiece {
  *
  * Controle ABAB por peça (D8): `next` é a PRÓXIMA ação e começa `'toggle'`.
  * Todo toque inverte `next` — `'toggle'` troca `arm` e vira `'rotate'`;
- * `'rotate'` gira `rot` 90° CW e vira `'toggle'`. O primeiro toque de cada Y é
- * sempre trocar a ponta ativa. Dois Ys têm alternâncias independentes.
+ * `'rotate'` gira `rot` 90° no sentido da ação (default CW, D26) e vira
+ * `'toggle'`. O primeiro toque de cada Y é sempre trocar a ponta ativa; o
+ * seletor CW/CCW decide o sentido do giro, nunca se ele acontece. Dois Ys têm
+ * alternâncias independentes.
  *
  * Nota de leitura §3.10-Y: dois trens que entram pelo Y em pontas opostas no
  * mesmo passo chegam à célula do Y no mesmo passo; o compute-then-resolve
@@ -112,7 +123,7 @@ export interface YPiece {
   readonly rot: Rotation;
   /** Braço ativo relativo à peça: 0 = base leste, 1 = base oeste. */
   readonly arm: 0 | 1;
-  /** Próxima ação do ABAB: `toggle` troca a ponta; `rotate` gira 90° CW. */
+  /** Próxima ação do ABAB: `toggle` troca a ponta; `rotate` gira 90° no sentido ativo. */
   readonly next: 'toggle' | 'rotate';
 }
 
@@ -149,7 +160,7 @@ export interface CrossingPiece {
  * reta, curva e cruzamento; o Y tem três lados e fluxo próprio em `YPiece`.
  *
  * O cruzamento é a quarta variante: dois canais retos independentes, sem
- * ação. Ele não entra em `rotatePieceCW`; `classifyTap` devolve `null/crossing`.
+ * ação. Ele não entra em `rotatePiece`; `classifyTap` devolve `null/crossing`.
  */
 export type Piece = StraightPiece | CurvePiece | YPiece | CrossingPiece;
 
@@ -415,9 +426,18 @@ export interface LevelLayout {
  *
  * O buffer de input (`buffer.ts`) guarda `Action` e a revalida no momento de
  * drenar (D4): um tap que virou célula ocupada não executa e não avança.
+ *
+ * D22/D26: o `turn` é capturado pelo input no enqueue e viaja com a ação; o
+ * dreno revalida só a validez da ação (célula ocupada, jogo terminado), nunca
+ * o sentido. Ausente = `'cw'`, o default de todas as fases anteriores.
  */
 export type Action =
-  | { readonly kind: 'tap'; readonly cell: CellPos }
+  | {
+      readonly kind: 'tap';
+      readonly cell: CellPos;
+      /** Sentido do giro; ausente = `'cw'` (retrocompatível). */
+      readonly turn?: RotationDirection;
+    }
   | { readonly kind: 'pass' };
 
 /**
@@ -437,9 +457,10 @@ export type BlockedTapReason = 'train';
 /**
  * Classificação de uma `Action`.
  *
- * - `rotated`: giro 90° CW de uma peça livre; ação válida, o passo avança;
+ * - `rotated`: giro 90° no sentido da ação (default CW) de uma peça livre;
+ *   ação válida, o passo avança;
  * - `toggled`: troca da ponta ativa de um Y (ABAB/D8); ação válida, o passo
- *   avança como `rotated` (§3.3);
+ *   avança como `rotated` (§3.3). O seletor não interfere no toggle;
  * - `passed`: passar turno; ação válida, o passo avança;
  * - `null`: toque sem ação; nada acontece;
  * - `blocked`: toque em célula ocupada por trem; nada acontece;
