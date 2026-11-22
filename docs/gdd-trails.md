@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Versão** | 1.4 — MVP2 em implementação; placement/modelo do seletor ratificados (D25/D26) e decisões D23–D32 fechadas pelo designer (tutorial 4 fases, economia com sink, selo, loja, 100% viável) |
-| **Data** | 18–19/11/2026 (v1.3) · 22/11/2026 (v1.4) |
-| **Estado** | Protótipo P0–P3+ completo; mecânica validada pelo designer (21/11) — MVP2 «xadrez consigo mesmo» em execução |
+| **Versão** | 1.4 — MVP2 **CONSTRUÍDO** (épicos M1–M9: seletor CW/CCW, save entre sessões, economia com sink, tutorial de 4 fases, 12 fases reais em 3 faixas); decisões D23–D32 fechadas pelo designer |
+| **Data** | 18–19/11/2026 (v1.3) · 22/11/2026 (v1.4 — ciclo MVP2 completo em um dia de orquestração) |
+| **Estado** | **16 fases jogáveis publicadas** (4 tutorial + 12 reais) — aguardando o veredito do designer: «é xadrez agora?» |
 | **Fonte** | Especificação preliminar `trilhos-gameplay.md` + sessões de design + `referencias-comparativas.md` + decisões D1–D21 do planejador técnico |
 
 > **Convenção de marcação:**
@@ -248,8 +248,8 @@ Loop completo implementado: 4 peças móveis (reta, curva, Y, cruzamento), fixos
 
 **Fora do MVP (pós-validação):** gerador de fases, progressão longa, mundos temáticos, paisagem, consumíveis/sink *(entram no MVP2 — ver abaixo)*, desfazer *(entra no MVP2 como Time-travel da loja)*, estrelas/ranking *(o selo de perfeição entra no MVP2; ranking segue fora)*, semáforo, desvio fixo, formatos irregulares, trem de vagões, eventos aleatórios, combustível, clima, áudio.
 
-### MVP2 «Xadrez consigo mesmo» — **ESTADO: EM IMPLEMENTAÇÃO (22/11)**
-Escopo aprovado (`proposta-mvp2.md` v2; plano operacional `plano-implementacao-mvp2.md`): seletor CW/CCW (D22/D25/D26) · save entre sessões + carteira + bônus n×(n−1) (D27) + selo estrela dourada (D30) + loja com Resgate (D28) e Time-travel (D29) · tutorial de 4 fases (D23/D24) · 12 fases reais em 3 faixas — 3 trens desde a faixa 1, pico 4 na faixa 3 (D20) · toda fase 100% viável (D32). **Gate do designer após a faixa 1:** «é xadrez agora?». Sessões externas seguem como instrumento de calibração, não bloqueio.
+### MVP2 «Xadrez consigo mesmo» — **ESTADO: CONSTRUÍDO (22/11) — 408 testes; cadeia de 16 fases publicada**
+Construído ponta a ponta (épicos M1–M9 do `plano-implementacao-mvp2.md`, um subagente por frente, validação prática por épico): seletor CW/CCW (D22/D25/D26) · save entre sessões + lista de fases + carteira + bônus n×(n−1) (D27) + selo estrela dourada (D30) + loja com Resgate (D28, 1/run ~8) e Time-travel (D29, ~4/uso) · tutorial de 4 fases com transição de tom (D23/D24) · 12 fases reais em 3 faixas — 3 trens desde a faixa 1, **pico de 4 trens na r11 «A mesa cheia»** (D20/Q7), vale final r12 (lição Cut the Rope) · toda fase 100% viável (D32) · colisões duplas reais abrem o prompt do resgate (r3 e r7). **O gate agora é o teste do designer** («é xadrez agora?») + as sessões externas (failing vs. skipping) como instrumento de calibração. Dívidas nomeadas para o veredito: variedade visual entre fases irmãs (geometria reusada), aviso de 5 ações no default da r7 (vs. ≥6 do checklist), o 4º trem da r11 como linha curta separada.
 
 **Critério de sucesso do MVP [CONFIRMAR]:** rejogar fases por vontade própria; mortes percebidas como justas — com o contrato local/remoto (D21): morte remota é descoberta, nunca surpresa instantânea; o sacrifício estratégico ocorre mas não domina; a economia-de-ação continua tensa.
 

@@ -6,7 +6,7 @@
 Puzzle de roteamento ferroviário em grade para telas de toque. Locomotivas coloridas avançam uma célula a cada ação do jogador — **1 ação = 1 passo** — e ele gira desvios, pontes e cruzamentos para entregar cada trem à estação da própria cor antes que o tabuleiro o destrua. Não basta conectar os pontos: é preciso conectá-los **no passo certo**.
 
 ## Estado atual
-**MVP2 em implementação ponta a ponta (22/11)** — decisão do designer: **sem gate por épico; o teste dele vem ao final de toda a sequência**. Proposta `proposta-mvp2.md` v2 aprovada; decisões abertas fechadas (D23–D32 no GDD v1.4); plano operacional `plano-implementacao-mvp2.md`. Ordem: seletor CW/CCW ✅ (M1, `c9ffecc`) → save+lista (M2) → bônus+selo (M3) → resgate (M4) → time-travel (M5) → tutorial 4 fases (M6) → faixa 1 (M7) → faixas 2–3 (M9). O protótipo P0–P3+ (mecânica validada; 251 testes) é a fundação — sem reescrita. **Derrota barata é design confirmado**; o valor vem da aspiração.
+**MVP2 construído e publicado (22/11)** — 16 fases: tutorial de 4 (Contrato · Sincronia · Obstáculos · Densidade com transição de tom) + 12 reais em 3 faixas (faixa 1: disputa dominante; faixa 2: duas disputas entrelaçadas com moedas no risco; faixa 3: pico de 4 trens na r11 «A mesa cheia», vale calmo na r12). Seletor CW/CCW (contragiro é lance), save entre sessões, carteira com bônus n×(n−1), selo estrela de perfeição (run limpa), loja viva (Resgate 1/run ~8 no prompt do não-vencível; Time-travel ~4/uso). 408 testes; épicos M1–M9 fechados no `plano-implementacao-mvp2.md`. **Aguardando o teste do designer no celular** — «é xadrez agora?» — e as sessões externas (failing vs. skipping) para calibrar a curva. Teste limpo: abrir com `?resetSave=1`.
 
 ## Decisões-chave já fechadas
 - **Y = desvio ferroviário bidirecional:** talo → ponta ativa; qualquer ponta → talo. Toques alternam trocar-ponta-ativa ↔ girar 90° (8 estados).
@@ -27,7 +27,7 @@ Puzzle de roteamento ferroviário em grade para telas de toque. Locomotivas colo
 - **MVP2 — decisões do designer (22/11, D23–D32):** tutorial de **4 fases** (P3+ sai; transição de tom no fim); **wingdings puro** para conceitos novos (D6, zero texto); seletor na **fileira inferior junto de «Passar turno»**, modo persistente + ABAB ortogonal; bônus por trem em **tabela n×(n−1)** (+0/+2/+6/+12, legível na vitória); Resgate **1/run ~8** (último trem perdido); Time-travel **fixo ~4/uso**; selo = **estrela dourada** (forma+cor); farm entre sessões **aceito e observado**; **toda fase 100% viável** (perda forçada fora do MVP2).
 
 ## Pendências principais
-**Playtest de validação (Q1–Q8) — instrumento durante o MVP2** · colunas do tabuleiro (QA em curso) · preços vivos da loja (tuning) · direção de arte (candidata: minimalismo geométrico) · plataforma/engine (portais).
+**Veredito do designer sobre o MVP2 («é xadrez agora?»)** · playtests externos (Q1–Q8 + calibração failing vs. skipping) · colunas do tabuleiro (QA em curso) · preços vivos da loja (tuning em `src/config/tuning.ts`) · dívidas de variedade visual entre fases irmãs · direção de arte (candidata: minimalismo geométrico) · plataforma/engine (portais).
 
 ## Documentos da pasta
 | Arquivo | Papel |
