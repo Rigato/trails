@@ -1,4 +1,111 @@
 /**
+ * Fase P3 «Densidade» — a TRANSIÇÃO DE TOM do tutorial (M6/D23/D24).
+ *
+ * 6×6, 3 trens, 3 estações, 3 vidas. O esqueleto didático do E19 continua:
+ * 2 Ys com janelas legíveis, um par de túneis, um cruzamento, uma montanha e
+ * moedas. A mudança do M6 é o PRIMEIRO XADREZ: o vermelho escolhe no Y (4,1)
+ * entre a rota SEGURA (arm 0, norte, direto à estação, sem moedas) e a rota
+ * PERFEITA (arm 1, sul, laço de moedas que passa pela montanha e volta à
+ * estação pelo sul). As duas vencem 3/3; só a segunda coleta 4/4.
+ *
+ * LEITURA DO PRIMEIRO QUADRO (wingdings, zero texto)
+ *   O Y do vermelho em (4,1) mostra o braço norte (seguro) e o braço sul com
+ *   QUATRO moedas e a montanha (3,3) logo atrás da curva (4,3). O azul tem uma
+ *   peça torta em (2,4) — o halo D6 aponta o primeiro conserto. O verde tem o
+ *   Y (5,4) no braço errado. O jogador vê, antes de tocar, que existe uma
+ *   rota que paga mais e que ela é a que passa perto do perigo.
+ *
+ * MAPA (colunas 0–5, linhas 0–5; linha 0 no topo)
+ *
+ *       0  1  2  3  4  5
+ *   0   v  .  v  .  c  @
+ *   1   |  .  |  c  Y  |
+ *   2   |  c  X  c  |  |
+ *   3   c  c  |  M  c  c
+ *   4   c  T  |  .  T  Y
+ *   5   v  .  #  .  .  #
+ *
+ *   `v` entradas: vermelha (0,0) SUL, azul (2,0) SUL, verde (0,5) NORTE.
+ *   `@` estação vermelha (5,0); `#` azul (2,5); `#` verde (5,5).
+ *   `X` cruzamento (2,2); `T` túneis (1,4)↔(4,4); `M` montanha (3,3).
+ *   `Y` Ys: vermelho (4,1) rot 3 / arm 0 (N) inicial; verde (5,4) rot 3 /
+ *   arm 0 (N) inicial. `|` reta N–S; `-` reta E–O; `c` curva.
+ *
+ * O VERMELHO — a escolha segura vs perfeita
+ *   (0,0) → (0,1) → (0,2) → (0,3) → (1,3) → (1,2) → X (2,2) → (3,2) →
+ *   (3,1) → Y (4,1).
+ *   SEGURA (arm 0 = N): (4,0) → @ (5,0) [12].
+ *   PERFEITA (arm 1 = S): (4,2) → (4,3) → (5,3) → (5,2) → (5,1) → @ (5,0)
+ *   [16]. A curva (4,3) nasce rot 3 (O–N) e aponta para a montanha (3,3);
+ *   um CW (rot 3→0, N–E) conserta e manda o vermelho para (5,3). As moedas
+ *   ficam em (4,2), (4,3), (5,3) e (5,2) — 4/4.
+ *
+ * O AZUL
+ *   (2,0) → (2,1) → X (2,2) → (2,3) → (2,4) → @ (2,5) [6]. A reta (2,4)
+ *   nasce E–O (rotação 1) e o azul morre nela; um CW (1→2, N–S) conserta.
+ *
+ * O VERDE — túnel e Y
+ *   (0,5) → (0,4) → T (1,4) → T (4,4) → Y (5,4) → @ (5,5) [6]. O Y nasce
+ *   arm 0 (N) e o braço N cai em (5,3) sem conexão (noExit); um toggle para
+ *   arm 1 (S) entrega.
+ *
+ * SOLUÇÃO SEGURA — 12 AÇÕES (3/3, 3 vidas, 0/4 moedas)
+ *   1. rotate (2,4) CW      azul consertado; os três entram.
+ *   2. toggle (5,4)         Y verde arm 0→1 (S).
+ *   3–12. passar            10 passos até o vermelho em @ (5,0) [12].
+ *   Azul @6, verde @6, vermelho @12; vitória 3/3, 0 moedas, sem selo.
+ *
+ * SOLUÇÃO PERFEITA — 16 AÇÕES (3/3, 3 vidas, 4/4 moedas)
+ *   1. rotate (2,4) CW
+ *   2. toggle (5,4)
+ *   3–9. passar             7 passos até o vermelho em (3,1).
+ *  10. toggle (4,1)         Y vermelho arm 0→1 (S) — último instante antes
+ *                            de o vermelho entrar no Y.
+ *  11. rotate (4,3) CW      curva rot 3→0 (N–E) — último instante antes de o
+ *                            vermelho entrar na curva (no passo 12).
+ *  12–16. passar            5 passos; moedas em 11/12/13/14, @ em 16.
+ *   A sequência acima usa o ÚLTIMO instante: o Y no 10 e a curva no 11 (o
+ *   vermelho entra na curva no 12; um toque no 12 ainda vale, no 13 já está
+ *   bloqueado pela ocupação). Consertar cedo também vence — o teste prova —
+ *   mas o caminho perfeito documentado é o de janela apertada. O azul cruza o
+ *   X no 3 e o vermelho no 7, e o verde usa o túnel nos passos 3–4. A rota
+ *   perfeita custa +4 ações e coleciona o risco.
+ *
+ * FALHAS / LOST
+ *   - AZUL SEM CONSERTO: morre em (2,4) no 5; verde e vermelho entregam;
+ *     `won` 2/3 com 2 vidas e 0 moedas.
+ *   - VERDE SEM TOGGLE: morre em (5,3) no 6; azul e vermelho entregam;
+ *     `won` 2/3 com 2 vidas e 1/4 moedas (a moeda de (5,3) conta mesmo na
+ *     morte, D16).
+ *   - VERMELHO NA MONTANHA: Y arm 1 no 10 sem o CW em (4,3); o vermelho
+ *     coleta (4,2)/(4,3) e morre na montanha no 13; `won` 2/3, 2 vidas, 2/4.
+ *   - LOST: os três erros acima no mesmo passo (azul 5, verde 6, vermelho 13)
+ *     zeram as 3 vidas no 13. É alcançável, mas exige três leituras erradas;
+ *     as moedas de (5,3), (4,2) e (4,3) ficam na run (3/4).
+ *
+ * CONTRATO DE SAÍDA (§1 da proposta) — esta fase garante:
+ *   1. tocar move o tempo e todos os trens;
+ *   2. previsão e horizonte (azul/verde anunciados; a montanha é descoberta
+ *      quando o Y vermelho é explorado);
+ *   3. Y por ABAB e leitura por conexão (os dois Ys);
+ *   5. moedas opcionais — a rota segura ignora 4/4; a perfeita coleta 4/4;
+ *   6. perda tolerada (3 vidas; o lost exige três erros);
+ *   7. reiniciar é grátis.
+ *   (4 — seletor — foi apresentado no P1 e segue disponível; esta fase não
+ *   repete o pulso D24.)
+ *
+ * REFERÊNCIA E19
+ *   `P3_LEVEL` neste arquivo é a Densidade ORIGINAL do E19, congelada como
+ *   base da Densidade+ (M9) e dos testes de feel. Ela NÃO está em `PHASES`:
+ *   o P3 publicado é `P3_DENSITY`, no fim deste arquivo. O id novo evita
+ *   herdar o selo da fase antiga no save.
+ */
+
+/**
+ * REFERÊNCIA E19 CONGELADA (M6) — este é o layout original da Densidade,
+ * mantido como base da Densidade+ (M9). O P3 PUBLICADO é `P3_DENSITY`, no fim
+ * deste arquivo; `P3_LEVEL` não está mais em `PHASES`.
+ *
  * Fase P3 «Densidade» — layout DEFINITIVO (E19, 3 trens).
  *
  * 6×6, 3 trens, 3 estações, 3 vidas. A sopa mecânica completa: 2 Ys, um par de
@@ -224,6 +331,89 @@ export const P3_LEVEL: LevelLayout = {
     { col: 1, row: 2 },
     { col: 2, row: 2 },
     { col: 3, row: 2 },
+  ],
+  trains: [
+    {
+      id: 'red',
+      color: RED,
+      shape: RED_SHAPE,
+      entry: { cell: { col: 0, row: 0 }, direction: 'south' },
+    },
+    {
+      id: 'blue',
+      color: BLUE,
+      shape: BLUE_SHAPE,
+      entry: { cell: { col: 2, row: 0 }, direction: 'south' },
+    },
+    {
+      id: 'green',
+      color: GREEN,
+      shape: GREEN_SHAPE,
+      entry: { cell: { col: 0, row: 5 }, direction: 'north' },
+    },
+  ],
+};
+
+/* ========================================================================== */
+/* P3 PUBLICADO — A DENSIDADE DO M6                                           */
+/* ========================================================================== */
+
+/**
+ * Grade 6×6 da Densidade publicada.
+ *
+ * O corredor vermelho/azul é o mesmo desenho didático do E19 (X no centro,
+ * estações nas bordas); a diferença é o Y (4,1): o braço N é a saída segura
+ * para @ (5,0) e o braço S desce para o laço de moedas (4,2) → (4,3) →
+ * (5,3) → (5,2) → (5,1), com a montanha (3,3) atrás da curva (4,3). O Y do
+ * verde (5,4) continua sendo o Y de estação do túnel.
+ *
+ * A peça (4,3) nasce rot 3 (O–N), um quarto antes da correta rot 0 (N–E):
+ * é o CW da rota perfeita. A reta (2,4) nasce E–O e o azul morre nela; é o
+ * primeiro conserto, anunciado pelo halo D6.
+ */
+const densityBoard: Board = {
+  width: 6,
+  height: 6,
+  rows: [
+    // Vermelho: (0,0) entrada, (4,0) curva S–E do braço seguro, @ (5,0).
+    // Azul: (2,0) entrada.
+    [straight(0), EMPTY, straight(0), EMPTY, curve(1), station(RED, RED_SHAPE)],
+    // Vermelho: (0,1)/(0,2) descida, (3,1) curva S–E, Y (4,1) rot 3 / arm 0;
+    // (5,1) reta N–S da volta da rota perfeita.
+    [straight(0), EMPTY, straight(0), curve(1), y(3, 0, 'toggle'), straight(0)],
+    // Vermelho: (1,2) curva E–S, X (2,2), (3,2) curva E–N;
+    // perfeita: (4,2) reta N–S e (5,2) reta N–S.
+    [straight(0), curve(1), crossing(), curve(3), straight(0), straight(0)],
+    // Vermelho: (0,3) curva S–E, (1,3) curva E–N; azul (2,3) reta N–S;
+    // montanha (3,3); perfeita: (4,3) curva O–N inicial (correta N–E) e
+    // (5,3) curva O–N.
+    [curve(0), curve(3), straight(0), mountain(), curve(3), curve(3)],
+    // Verde: (0,4) curva S–E, T (1,4)↔(4,4); azul (2,4) reta E–O inicial
+    // (correta N–S); Y verde (5,4) rot 3 / arm 0.
+    [curve(1), tunnel({ col: 4, row: 4 }), straight(1), EMPTY, tunnel({ col: 1, row: 4 }), y(3, 0, 'toggle')],
+    // Verde: (0,5) entrada N–S; @ azul (2,5); @ verde (5,5).
+    [straight(0), EMPTY, station(BLUE, BLUE_SHAPE), EMPTY, EMPTY, station(GREEN, GREEN_SHAPE)],
+  ],
+};
+
+/**
+ * Fase P3 publicada do tutorial (M6): a Densidade com dois andares de sucesso.
+ *
+ * SEGURA: 12 ações, 3/3, 0/4 moedas. PERFEITA: 16 ações, 3/3, 4/4 moedas.
+ * O id difere do `P3_LEVEL` congelado para um save antigo não herdar o selo da
+ * Densidade do E19 (que era outra fase).
+ */
+export const P3_DENSITY: LevelLayout = {
+  id: 'p3-densidade-tutorial',
+  name: 'P3 — Densidade',
+  tutorial: true,
+  board: densityBoard,
+  lives: 3,
+  coins: [
+    { col: 4, row: 2 },
+    { col: 4, row: 3 },
+    { col: 5, row: 3 },
+    { col: 5, row: 2 },
   ],
   trains: [
     {

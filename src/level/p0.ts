@@ -11,6 +11,12 @@
  * vazio. Trem e estação vermelhos (`#d64545`, forma círculo — cor + forma
  * redundantes). Peças móveis apenas retas e curvas.
  *
+ * CONTRATO DE SAÍDA (§1 da proposta) — esta fase garante:
+ *   1. tocar move o tempo e o trem;
+ *   2. previsão e horizonte (o traço morre na peça errada e muda a cada giro);
+ *   7. reiniciar é grátis (a falha não existe como estado/custo, D1).
+ *   (3 Y, 4 seletor, 5 moedas e 6 vidas entram no P1/P2/P3.)
+ *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
  *       0  1  2  3  4  5

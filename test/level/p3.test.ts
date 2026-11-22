@@ -1,10 +1,11 @@
 /**
- * Fase P3 «Densidade» — testes da fase DEFINITIVA (E19, 3 trens).
+ * Fase P3 «Densidade» — testes da fase PUBLICADA do M6 (D23/D24).
  *
- * O core (`test/core/*`) cobre túnel/cruzamento/montanha genéricos; este
- * arquivo testa o DADO da fase: o tabuleiro 6×6, os 3 pares, as duas janelas
- * de Y, o laço longo do vermelho, o túnel do verde, o X compartilhado, as
- * moedas e as rotas de falha/sacrifício. Substitui o fumaça do rascunho.
+ * O P3 do E19 (3 trens/3 moedas) fica congelado em `P3_LEVEL` para a
+ * Densidade+ (M9); este arquivo testa `P3_DENSITY`: o esqueleto didático
+ * (túnel, cruzamento, montanha, 2 Ys) + o primeiro xadrez — a rota SEGURA
+ * (3/3 sem moedas) e a PERFEITA (3/3 com 4/4 moedas, mais ações e uma janela
+ * de 2 passos na curva da montanha).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -14,13 +15,13 @@ import type {
   Game,
   GameEvent,
   Prediction,
-  TrainStatus,
   YPiece,
 } from '../../src/core/types';
 import { cellAt } from '../../src/core/types';
 import { setup } from '../../src/core/game';
 import { resolveStep } from '../../src/core/step';
-import { P3_LEVEL } from '../../src/level/p3';
+import { P3_DENSITY, P3_LEVEL } from '../../src/level/p3';
+import { sealCondition } from '../../src/save/economy';
 import { firstHintTarget } from '../../src/render/fx';
 import {
   collisionsOf,
@@ -36,24 +37,70 @@ import {
   straight,
   trainInState,
   tunnel,
+  y,
 } from '../core/helpers';
 
 const PASS: Action = { kind: 'pass' };
 
+/** Primeiro conserto: a reta (2,4) nasce E–O e o azul morre nela. */
+const BLUE_FIX: Action = { kind: 'tap', cell: pos(2, 4) };
+/** Y verde: arm 0 (N, sem saída) → arm 1 (S, estação). */
+const GREEN_FIX: Action = { kind: 'tap', cell: pos(5, 4) };
+/** Y vermelho: arm 0 (N, seguro) → arm 1 (S, laço de moedas). */
+const RED_SWITCH: Action = { kind: 'tap', cell: pos(4, 1) };
+/** Curva (4,3): rot 3 (O–N, montanha) → rot 0 (N–E, perfeita). */
+const RED_CURVE: Action = { kind: 'tap', cell: pos(4, 3) };
+
 /**
- * Solução oficial (15 ações): abre o Y verde, espera o vermelho chegar ao Y,
- * abre o Y vermelho na boca do Y e espera a entrega.
+ * Rota SEGURA — 12 ações: conserta o azul, abre o verde e espera o vermelho
+ * pelo braço norte. Coleta 0/4; vence 3/3.
  */
-const SOLUTION: readonly Action[] = [
-  { kind: 'tap', cell: pos(5, 4) },
+const SAFE: readonly Action[] = [
+  BLUE_FIX, // 1
+  GREEN_FIX, // 2
+  PASS, // 3
+  PASS, // 4
+  PASS, // 5
+  PASS, // 6
+  PASS, // 7
+  PASS, // 8
+  PASS, // 9
+  PASS, // 10
+  PASS, // 11
+  PASS, // 12 — vermelho em @ (5,0)
+];
+
+/**
+ * Rota PERFEITA — 16 ações: o mesmo começo, mas o Y vermelho é aberto no
+ * passo 10 e a curva da montanha é consertada no 11. Coleta 4/4; vence 3/3.
+ */
+const PERFECT: readonly Action[] = [
+  BLUE_FIX, // 1
+  GREEN_FIX, // 2
+  PASS, // 3
+  PASS, // 4
+  PASS, // 5
+  PASS, // 6
+  PASS, // 7
+  PASS, // 8
+  PASS, // 9
+  RED_SWITCH, // 10 — último instante antes do Y
+  RED_CURVE, // 11 — a curva corrige antes do passo 12
+  PASS, // 12
+  PASS, // 13
+  PASS, // 14
+  PASS, // 15
+  PASS, // 16 — vermelho em @ (5,0)
+];
+
+/** Azul esquecido: verde consertado, azul morre em (2,4) no 5. */
+const BLUE_FORGOTTEN: readonly Action[] = [
+  GREEN_FIX,
   PASS,
   PASS,
   PASS,
   PASS,
   PASS,
-  PASS,
-  PASS,
-  { kind: 'tap', cell: pos(4, 2) },
   PASS,
   PASS,
   PASS,
@@ -62,50 +109,9 @@ const SOLUTION: readonly Action[] = [
   PASS,
 ];
 
-/** Ys consertados cedo: prova que a janela é larga, não um timing de 1 passo. */
-const EARLY_YS: readonly Action[] = [
-  { kind: 'tap', cell: pos(5, 4) },
-  { kind: 'tap', cell: pos(4, 2) },
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-];
-
-/** Y vermelho esquecido: o vermelho morre na montanha no passo 10. */
-const RED_FORGOTTEN: readonly Action[] = [
-  { kind: 'tap', cell: pos(5, 4) },
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-];
-
-/** Y verde esquecido: o verde morre em (5,5) no passo 6; o vermelho entrega. */
+/** Verde esquecido: azul consertado, verde morre em (5,3) no 6. */
 const GREEN_FORGOTTEN: readonly Action[] = [
-  { kind: 'tap', cell: pos(4, 2) },
-  PASS,
-  PASS,
-  PASS,
+  BLUE_FIX,
   PASS,
   PASS,
   PASS,
@@ -119,127 +125,38 @@ const GREEN_FORGOTTEN: readonly Action[] = [
   PASS,
 ];
 
-/**
- * `lost`: três perdas independentes — azul (2,1) rotacionada no 1, verde sem
- * toggle no 6, vermelho sem toggle no 10. O vermelho ainda coleta as 3 moedas.
- */
+/** Vermelho na montanha: Y aberto no 10, curva não consertada; morre no 13. */
+const RED_MOUNTAIN: readonly Action[] = [
+  BLUE_FIX,
+  GREEN_FIX,
+  PASS,
+  PASS,
+  PASS,
+  PASS,
+  PASS,
+  PASS,
+  PASS,
+  RED_SWITCH, // 10
+  PASS, // 11
+  PASS, // 12
+  PASS, // 13 — montanha
+];
+
+/** Três erros: azul no 5, verde no 6, vermelho na montanha no 13 → lost. */
 const LOST: readonly Action[] = [
-  { kind: 'tap', cell: pos(2, 1) },
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-  PASS,
-];
-
-interface StepExpectation {
-  readonly red: TrainStatus;
-  readonly blue: TrainStatus;
-  readonly green: TrainStatus;
-  readonly coins: readonly CellPos[];
-}
-
-/** Snapshot esperado depois de cada ação da solução oficial. */
-const EXPECTED: readonly StepExpectation[] = [
-  {
-    red: { kind: 'running', cell: pos(0, 0), incoming: 'south' },
-    blue: { kind: 'running', cell: pos(2, 0), incoming: 'south' },
-    green: { kind: 'running', cell: pos(0, 5), incoming: 'north' },
-    coins: [],
-  },
-  {
-    red: { kind: 'running', cell: pos(0, 1), incoming: 'south' },
-    blue: { kind: 'running', cell: pos(2, 1), incoming: 'south' },
-    green: { kind: 'running', cell: pos(0, 4), incoming: 'north' },
-    coins: [],
-  },
-  {
-    red: { kind: 'running', cell: pos(0, 2), incoming: 'south' },
-    blue: { kind: 'running', cell: pos(2, 2), incoming: 'south' },
-    green: { kind: 'running', cell: pos(1, 4), incoming: 'east' },
-    coins: [pos(2, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(0, 3), incoming: 'south' },
-    blue: { kind: 'running', cell: pos(2, 3), incoming: 'south' },
-    green: {
-      kind: 'running',
-      cell: pos(4, 4),
-      incoming: 'east',
-      justTunneled: true,
-    },
-    coins: [pos(2, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(1, 3), incoming: 'east' },
-    blue: { kind: 'running', cell: pos(2, 4), incoming: 'south' },
-    green: { kind: 'running', cell: pos(5, 4), incoming: 'east' },
-    coins: [pos(2, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(1, 2), incoming: 'north' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(2, 2), incoming: 'east' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(3, 2), incoming: 'east' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(4, 2), incoming: 'east' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(4, 1), incoming: 'north' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(3, 1), incoming: 'west' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(3, 0), incoming: 'north' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(4, 0), incoming: 'east' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'running', cell: pos(5, 0), incoming: 'east' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
-  {
-    red: { kind: 'delivered' },
-    blue: { kind: 'delivered' },
-    green: { kind: 'delivered' },
-    coins: [pos(2, 2), pos(1, 2), pos(3, 2)],
-  },
+  PASS, // 1
+  PASS, // 2
+  PASS, // 3
+  PASS, // 4
+  PASS, // 5 — azul morre em (2,4)
+  PASS, // 6 — verde morre em (5,3)
+  PASS, // 7
+  PASS, // 8
+  PASS, // 9
+  RED_SWITCH, // 10
+  PASS, // 11
+  PASS, // 12
+  PASS, // 13 — vermelho na montanha; vidas 0
 ];
 
 /** Previsões dos trens, na ordem do layout. */
@@ -281,26 +198,27 @@ function run(game: Game, actions: readonly Action[]): GameEvent[] {
   return events;
 }
 
-describe('P3 «Densidade» — contrato do dado (3 trens)', () => {
-  it('6×6, 3 pares, 3 estações e o verde/triângulo declarado no nível', () => {
-    const board = P3_LEVEL.board;
-    const game = setup(P3_LEVEL);
+describe('P3 «Densidade» (M6) — contrato do dado', () => {
+  it('6×6, 3 pares, 3 estações, 3 vidas; P3_LEVEL é a referência E19', () => {
+    const board = P3_DENSITY.board;
+    const game = setup(P3_DENSITY);
     const red = trainInState(game.state, 'red');
     const blue = trainInState(game.state, 'blue');
     const green = trainInState(game.state, 'green');
 
     expect(board.width).toBe(6);
     expect(board.height).toBe(6);
-    expect(P3_LEVEL.lives).toBe(3);
-    expect(P3_LEVEL.trains).toHaveLength(3);
+    expect(P3_DENSITY.lives).toBe(3);
+    expect(P3_DENSITY.trains).toHaveLength(3);
+    expect(P3_DENSITY.tutorial).toBe(true);
+    expect(P3_DENSITY.selectorHint).toBeUndefined();
 
     expect(red.shape).toBe('circle');
     expect(blue.shape).toBe('square');
     expect(green.shape).toBe('triangle');
-    expect(green.color).toBe('#3f8f5f');
     expect(new Set([red.color, blue.color, green.color]).size).toBe(3);
 
-    expect(cellAt(board, pos(5, 1))).toEqual({
+    expect(cellAt(board, pos(5, 0))).toEqual({
       kind: 'fixed',
       fixed: { kind: 'station', color: red.color, shape: red.shape },
     });
@@ -308,97 +226,94 @@ describe('P3 «Densidade» — contrato do dado (3 trens)', () => {
       kind: 'fixed',
       fixed: { kind: 'station', color: blue.color, shape: blue.shape },
     });
-    expect(cellAt(board, pos(5, 3))).toEqual({
+    expect(cellAt(board, pos(5, 5))).toEqual({
       kind: 'fixed',
       fixed: { kind: 'station', color: green.color, shape: green.shape },
     });
-  });
 
-  it('entradas-peça (D13), túnel simétrico, X, montanha e os dois Ys', () => {
-    const board = P3_LEVEL.board;
-
-    expect(P3_LEVEL.trains[0]?.entry).toEqual({
+    expect(P3_DENSITY.trains[0]?.entry).toEqual({
       cell: pos(0, 0),
       direction: 'south',
     });
-    expect(P3_LEVEL.trains[1]?.entry).toEqual({
+    expect(P3_DENSITY.trains[1]?.entry).toEqual({
       cell: pos(2, 0),
       direction: 'south',
     });
-    expect(P3_LEVEL.trains[2]?.entry).toEqual({
+    expect(P3_DENSITY.trains[2]?.entry).toEqual({
       cell: pos(0, 5),
       direction: 'north',
     });
 
-    for (const train of P3_LEVEL.trains) {
+    for (const train of P3_DENSITY.trains) {
       expect(cellAt(board, train.entry.cell)?.kind).toBe('piece');
     }
 
-    const tunnels: { cell: CellPos; exit: CellPos }[] = [];
+    // O P3 do E19 continua no arquivo, com id próprio, para a Densidade+.
+    expect(P3_LEVEL.id).toBe('p3-densidade');
+    expect(P3_DENSITY.id).toBe('p3-densidade-tutorial');
+    expect(P3_DENSITY.id).not.toBe(P3_LEVEL.id);
+    expect(P3_LEVEL.coins).toHaveLength(3);
+  });
 
-    for (let row = 0; row < board.height; row += 1) {
-      for (let col = 0; col < board.width; col += 1) {
-        const cell = cellAt(board, pos(col, row));
+  it('túnel simétrico, X, montanha, 2 Ys e as 4 moedas sobre trilho', () => {
+    const board = P3_DENSITY.board;
 
-        if (cell?.kind === 'fixed' && cell.fixed.kind === 'tunnel') {
-          tunnels.push({ cell: pos(col, row), exit: cell.fixed.exit });
-        }
-      }
-    }
-
-    expect(tunnels).toEqual([
-      { cell: pos(1, 4), exit: pos(4, 4) },
-      { cell: pos(4, 4), exit: pos(1, 4) },
-    ]);
     expect(cellAt(board, pos(1, 4))).toEqual(tunnel(pos(4, 4)));
     expect(cellAt(board, pos(4, 4))).toEqual(tunnel(pos(1, 4)));
     expect(cellAt(board, pos(2, 2))).toEqual(crossing());
-    expect(cellAt(board, pos(4, 3))).toEqual(mountain());
+    expect(cellAt(board, pos(3, 3))).toEqual(mountain());
 
-    // A rota do vermelho passa pelo X e pelo Y; o Y nasce no braço fatal (S).
-    expect(cellAt(board, pos(3, 2))).toEqual(straight(1));
-    expect(cellAt(board, pos(4, 1))).toEqual(curve(2));
-    expect(cellAt(board, pos(3, 1))).toEqual(curve(0));
+    const game = setup(P3_DENSITY);
 
-    const game = setup(P3_LEVEL);
-
-    expect(yAt(game, pos(4, 2))).toEqual({
+    expect(yAt(game, pos(4, 1))).toEqual({
       kind: 'y',
       rot: 3,
-      arm: 1,
+      arm: 0,
       next: 'toggle',
     });
     expect(yAt(game, pos(5, 4))).toEqual({
       kind: 'y',
       rot: 3,
-      arm: 1,
+      arm: 0,
       next: 'toggle',
     });
 
-    expect(P3_LEVEL.coins).toEqual([
-      pos(1, 2),
-      pos(2, 2),
-      pos(3, 2),
+    let yCount = 0;
+
+    for (const cell of board.rows.flat()) {
+      if (cell.kind === 'piece' && cell.piece.kind === 'y') {
+        yCount += 1;
+      }
+    }
+
+    expect(yCount).toBe(2);
+
+    // A curva da montanha nasce um quarto antes da correta; o azul nasce torto.
+    expect(cellAt(board, pos(4, 3))).toEqual(curve(3));
+    expect(cellAt(board, pos(2, 4))).toEqual(straight(1));
+    expect(cellAt(board, pos(5, 4))).toEqual(y(3, 0, 'toggle'));
+
+    expect(P3_DENSITY.coins).toEqual([
+      pos(4, 2),
+      pos(4, 3),
+      pos(5, 3),
+      pos(5, 2),
     ]);
 
-    for (const coin of P3_LEVEL.coins ?? []) {
+    for (const coin of P3_DENSITY.coins ?? []) {
       expect(cellAt(board, coin)?.kind).toBe('piece');
     }
   });
 
-  it('primeiro quadro (core): vermelho na montanha, verde no vazio, azul em @; sem hint D6', () => {
-    const game = setup(P3_LEVEL);
+  it('primeiro quadro: azul/verde anunciados; o halo D6 aponta (2,4)', () => {
+    const game = setup(P3_DENSITY);
     const predictions = predictionsOf(game);
     const red = predictions.find((prediction) => prediction.trainId === 'red');
     const blue = predictions.find((prediction) => prediction.trainId === 'blue');
-    const green = predictions.find((prediction) => prediction.trainId === 'green');
+    const green = predictions.find(
+      (prediction) => prediction.trainId === 'green',
+    );
 
-    // Este assert é do CORE, que calcula o path completo. No render com
-    // horizonte D21 (6 células) o path do vermelho (10 células) é truncado e
-    // o marcador de parada não é desenhado no primeiro quadro: a montanha e o
-    // Y vermelho aparecem no tabuleiro, e o marcador remoto vira descoberta
-    // quando o trem entra na janela («morte local anunciada, remota vira
-    // descoberta»).
     expect(game.state.step).toBe(0);
     expect(game.state.status).toBe('ready');
     expect(game.state.lives).toBe(3);
@@ -408,113 +323,41 @@ describe('P3 «Densidade» — contrato do dado (3 trens)', () => {
       expect(train.status.kind).toBe('waiting');
     }
 
-    // O laço do vermelho atravessa o X e o Y antes de terminar na montanha.
-    expect(red?.path).toEqual([
-      pos(0, 0),
-      pos(0, 1),
-      pos(0, 2),
-      pos(0, 3),
-      pos(1, 3),
-      pos(1, 2),
-      pos(2, 2),
-      pos(3, 2),
-      pos(4, 2),
-      pos(4, 3),
-    ]);
-    expect(red?.stop).toEqual({ kind: 'mountain', cell: pos(4, 3) });
-
-    expect(blue?.path).toEqual([
-      pos(2, 0),
-      pos(2, 1),
-      pos(2, 2),
-      pos(2, 3),
-      pos(2, 4),
-      pos(2, 5),
-    ]);
-    expect(blue?.stop).toEqual({
+    // A rota segura já está montada: o vermelho vê @ (5,0) sem tocar em nada.
+    expect(red?.stop).toEqual({
       kind: 'station',
-      cell: pos(2, 5),
+      cell: pos(5, 0),
       correct: true,
     });
+    expect(red?.path).not.toContainEqual(pos(4, 2));
 
-    expect(green?.path).toEqual([
-      pos(0, 5),
-      pos(0, 4),
-      pos(1, 4),
-      pos(4, 4),
-      pos(5, 4),
-      pos(5, 5),
-    ]);
-    expect(green?.stop).toEqual({ kind: 'noExit', cell: pos(5, 5) });
+    // O azul avisa a peça torta (2,4); o verde avisa o braço N do Y (5,3).
+    expect(blue?.stop).toEqual({ kind: 'noExit', cell: pos(2, 4) });
+    expect(green?.stop).toEqual({ kind: 'noExit', cell: pos(5, 3) });
 
-    // D6 era do tutorial; nenhuma previsão para em peça.
-    expect(firstHintTarget(game.state, predictions)).toBeNull();
-  });
-
-  it('os 3 trens entram no passo 1 pela primeira célula-peça (D13)', () => {
-    const game = setup(P3_LEVEL);
-    const result = game.apply(SOLUTION[0]!);
-
-    expect(result.advanced).toBe(true);
-    expect(result.outcome.kind).toBe('toggled');
-    expect(game.state.step).toBe(1);
-
-    expect(trainInState(game.state, 'red').status).toEqual({
-      kind: 'running',
-      cell: pos(0, 0),
-      incoming: 'south',
-    });
-    expect(trainInState(game.state, 'blue').status).toEqual({
-      kind: 'running',
-      cell: pos(2, 0),
-      incoming: 'south',
-    });
-    expect(trainInState(game.state, 'green').status).toEqual({
-      kind: 'running',
-      cell: pos(0, 5),
-      incoming: 'north',
-    });
-
-    const moves = result.events.filter((event) => event.kind === 'trainMoved');
-
-    expect(moves).toHaveLength(3);
-
-    for (const move of moves) {
-      if (move.kind === 'trainMoved') {
-        expect(move.from).toBeNull();
-      }
-    }
-
-    // O toggle do passo 1 já conserta a previsão do verde.
-    expect(game.prediction('green')?.stop).toEqual({
-      kind: 'station',
-      cell: pos(5, 3),
-      correct: true,
-    });
-    expect(game.prediction('red')?.stop).toEqual({
-      kind: 'mountain',
-      cell: pos(4, 3),
-    });
+    // O halo D6 é o primeiro conserto: a reta do azul.
+    expect(firstHintTarget(game.state, predictions)).toEqual(pos(2, 4));
   });
 });
 
-describe('P3 «Densidade» — solução documentada', () => {
-  it('15 passos entregam 3/3, 3 vidas, 3 moedas, sem dano', () => {
-    const game = setup(P3_LEVEL);
+describe('P3 «Densidade» (M6) — os dois andares de sucesso', () => {
+  it('rota SEGURA: 12 ações, 3/3, 3 vidas, 0/4 moedas (sem selo)', () => {
+    const game = setup(P3_DENSITY);
     const allEvents: GameEvent[] = [];
 
-    for (const [index, action] of SOLUTION.entries()) {
+    for (const [index, action] of SAFE.entries()) {
       const result = game.apply(action);
 
       expect(result.advanced).toBe(true);
       expect(result.outcome.kind).toBe(
-        index === 0 || index === 8 ? 'toggled' : 'passed',
+        index === 0 ? 'rotated' : index === 1 ? 'toggled' : 'passed',
       );
       expect(game.state.step).toBe(index + 1);
       allEvents.push(...result.events);
     }
 
-    expect(game.state.step).toBe(15);
+    expect(SAFE).toHaveLength(12);
+    expect(game.state.step).toBe(12);
     expect(game.state.status).toBe('won');
     expect(game.state.lives).toBe(3);
     expect(trainInState(game.state, 'red').status).toEqual({
@@ -526,16 +369,22 @@ describe('P3 «Densidade» — solução documentada', () => {
     expect(trainInState(game.state, 'green').status).toEqual({
       kind: 'delivered',
     });
-    expect(game.state.coinsCollected).toEqual([
-      pos(2, 2),
-      pos(1, 2),
-      pos(3, 2),
-    ]);
+    expect(game.state.coinsCollected).toEqual([]);
 
     expect(collisionsOf(allEvents)).toHaveLength(0);
     expect(derailsOf(allEvents)).toHaveLength(0);
     expect(lifeLossesOf(allEvents)).toHaveLength(0);
-    expect(eventKinds(allEvents).filter((kind) => kind === 'coinCollected')).toHaveLength(3);
+
+    expect(
+      sealCondition({
+        delivered: 3,
+        trainTotal: P3_DENSITY.trains.length,
+        coins: game.state.coinsCollected.length,
+        coinsTotal: P3_DENSITY.coins?.length ?? 0,
+        consumableUsed: false,
+      }),
+    ).toBe(false);
+
     expect(eventKinds(allEvents).slice(-3)).toEqual([
       'trainMoved',
       'trainDelivered',
@@ -543,86 +392,240 @@ describe('P3 «Densidade» — solução documentada', () => {
     ]);
   });
 
-  it('passo a passo: X no 7, Y no 9, túnel no 3–4 e laço até o 15', () => {
-    const game = setup(P3_LEVEL);
+  it('rota PERFEITA: 16 ações, 3/3, 4/4 moedas, selo bancável', () => {
+    const game = setup(P3_DENSITY);
+    const allEvents: GameEvent[] = [];
 
-    for (const [index, action] of SOLUTION.entries()) {
+    for (const [index, action] of PERFECT.entries()) {
       const result = game.apply(action);
 
       expect(result.advanced).toBe(true);
-
-      const expected = EXPECTED[index]!;
-
-      expect(trainInState(game.state, 'red').status).toEqual(expected.red);
-      expect(trainInState(game.state, 'blue').status).toEqual(expected.blue);
-      expect(trainInState(game.state, 'green').status).toEqual(expected.green);
-      expect(game.state.coinsCollected).toEqual(expected.coins);
+      expect(result.outcome.kind).toBe(
+        index === 0
+          ? 'rotated'
+          : index === 1 || index === 9
+            ? 'toggled'
+            : index === 10
+              ? 'rotated'
+              : 'passed',
+      );
+      expect(game.state.step).toBe(index + 1);
+      allEvents.push(...result.events);
     }
 
-    // O verde atravessa o túnel no passo 4 e sai no 5.
-    expect(EXPECTED[3]?.green).toEqual({
-      kind: 'running',
-      cell: pos(4, 4),
-      incoming: 'east',
-      justTunneled: true,
-    });
-  });
-
-  it('Ys consertados cedo: a janela é larga; 3/3 sem tocar de novo', () => {
-    const game = setup(P3_LEVEL);
-    const allEvents = run(game, EARLY_YS);
-
-    expect(game.state.step).toBe(15);
+    expect(PERFECT).toHaveLength(16);
+    expect(PERFECT.length).toBeGreaterThan(SAFE.length);
+    expect(game.state.step).toBe(16);
     expect(game.state.status).toBe('won');
     expect(game.state.lives).toBe(3);
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(trainInState(game.state, 'green').status).toEqual({
+      kind: 'delivered',
+    });
+
     expect(game.state.coinsCollected).toEqual([
-      pos(2, 2),
-      pos(1, 2),
-      pos(3, 2),
+      pos(4, 2),
+      pos(4, 3),
+      pos(5, 3),
+      pos(5, 2),
     ]);
-    expect(yAt(game, pos(4, 2))).toEqual({
-      kind: 'y',
-      rot: 3,
-      arm: 0,
-      next: 'rotate',
-    });
-    expect(yAt(game, pos(5, 4))).toEqual({
-      kind: 'y',
-      rot: 3,
-      arm: 0,
-      next: 'rotate',
-    });
+    expect(game.state.coinsCollected).toHaveLength(
+      P3_DENSITY.coins?.length ?? 0,
+    );
+    expect(
+      sealCondition({
+        delivered: 3,
+        trainTotal: P3_DENSITY.trains.length,
+        coins: game.state.coinsCollected.length,
+        coinsTotal: P3_DENSITY.coins?.length ?? 0,
+        consumableUsed: false,
+      }),
+    ).toBe(true);
+
     expect(collisionsOf(allEvents)).toHaveLength(0);
     expect(derailsOf(allEvents)).toHaveLength(0);
     expect(lifeLossesOf(allEvents)).toHaveLength(0);
+    expect(eventKinds(allEvents).slice(-3)).toEqual([
+      'trainMoved',
+      'trainDelivered',
+      'victory',
+    ]);
   });
-});
 
-describe('P3 «Densidade» — sacrifício e falhas encenáveis', () => {
-  it('Y vermelho esquecido: montanha no 10; azul/verde vencem 2/3', () => {
-    const game = setup(P3_LEVEL);
+  it('passo a passo da PERFEITA: Y no 10, curva no 11, moedas 11–14', () => {
+    const game = setup(P3_DENSITY);
 
-    // Passos 1–9: o vermelho chega ao Y com o braço fatal (S).
-    for (const action of RED_FORGOTTEN.slice(0, 9)) {
+    for (const action of PERFECT.slice(0, 10)) {
       game.apply(action);
     }
 
-    expect(game.state.step).toBe(9);
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(4, 1),
+      incoming: 'east',
+    });
+    expect(game.state.coinsCollected).toEqual([]);
+
+    game.apply(PERFECT[10]!); // 11 — curva corrigida; vermelho em (4,2)
     expect(trainInState(game.state, 'red').status).toEqual({
       kind: 'running',
       cell: pos(4, 2),
+      incoming: 'south',
+    });
+    expect(game.state.coinsCollected).toEqual([pos(4, 2)]);
+
+    game.apply(PERFECT[11]!); // 12 — vermelho na curva (4,3)
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(4, 3),
+      incoming: 'south',
+    });
+    expect(game.state.coinsCollected).toEqual([pos(4, 2), pos(4, 3)]);
+
+    game.apply(PERFECT[12]!); // 13 — vermelho em (5,3)
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(5, 3),
       incoming: 'east',
     });
-    expect(game.prediction('red')?.stop).toEqual({
-      kind: 'mountain',
-      cell: pos(4, 3),
+    expect(game.state.coinsCollected).toEqual([
+      pos(4, 2),
+      pos(4, 3),
+      pos(5, 3),
+    ]);
+
+    game.apply(PERFECT[13]!); // 14 — vermelho em (5,2)
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(5, 2),
+      incoming: 'north',
+    });
+    expect(game.state.coinsCollected).toEqual([
+      pos(4, 2),
+      pos(4, 3),
+      pos(5, 3),
+      pos(5, 2),
+    ]);
+
+    game.apply(PERFECT[14]!); // 15 — vermelho em (5,1)
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'running',
+      cell: pos(5, 1),
+      incoming: 'north',
     });
 
-    // Passo 10: o braço S joga o vermelho na montanha; azul/verde já entregaram.
-    const result = game.apply(RED_FORGOTTEN[9]!);
+    game.apply(PERFECT[15]!); // 16 — entrega em @ (5,0)
+    expect(game.state.status).toBe('won');
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'delivered',
+    });
+  });
 
-    expect(result.advanced).toBe(true);
-    expect(game.state.step).toBe(10);
+  it('Ys e curva consertados cedo também vencem: a janela não é frame-perfect', () => {
+    const game = setup(P3_DENSITY);
+    const early: readonly Action[] = [
+      BLUE_FIX,
+      GREEN_FIX,
+      RED_SWITCH,
+      RED_CURVE,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+      PASS,
+    ];
+
+    const allEvents = run(game, early);
+
+    expect(game.state.step).toBe(16);
+    expect(game.state.status).toBe('won');
+    expect(game.state.lives).toBe(3);
+    expect(game.state.coinsCollected).toHaveLength(4);
+    expect(collisionsOf(allEvents)).toHaveLength(0);
+    expect(derailsOf(allEvents)).toHaveLength(0);
+  });
+});
+
+describe('P3 «Densidade» (M6) — falhas encenáveis e lost', () => {
+  it('azul sem conserto: morre em (2,4) no 5; 2/3 com 2 vidas', () => {
+    const game = setup(P3_DENSITY);
+    const allEvents = run(game, BLUE_FORGOTTEN);
+
+    expect(game.state.step).toBe(12);
+    expect(game.state.status).toBe('won');
+    expect(game.state.lives).toBe(2);
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'derailed',
+      reason: 'noExit',
+    });
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(trainInState(game.state, 'green').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(game.state.coinsCollected).toEqual([]);
+
+    expect(derailsOf(allEvents)).toContainEqual({
+      kind: 'trainDerailed',
+      trainId: 'blue',
+      at: pos(2, 4),
+      direction: 'south',
+      reason: 'noExit',
+    });
+    expect(lifeLossesOf(allEvents)).toEqual([
+      { kind: 'lifeLost', step: 5, remaining: 2 },
+    ]);
+  });
+
+  it('verde sem toggle: morre em (5,3) no 6; 2/3 com 2 vidas', () => {
+    const game = setup(P3_DENSITY);
+    const allEvents = run(game, GREEN_FORGOTTEN);
+
+    expect(game.state.step).toBe(12);
+    expect(game.state.status).toBe('won');
+    expect(game.state.lives).toBe(2);
+    expect(trainInState(game.state, 'green').status).toEqual({
+      kind: 'derailed',
+      reason: 'noExit',
+    });
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'delivered',
+    });
+    expect(game.state.coinsCollected).toEqual([pos(5, 3)]);
+
+    expect(derailsOf(allEvents)).toContainEqual({
+      kind: 'trainDerailed',
+      trainId: 'green',
+      at: pos(5, 3),
+      direction: 'north',
+      reason: 'noExit',
+    });
+    expect(lifeLossesOf(allEvents)).toEqual([
+      { kind: 'lifeLost', step: 6, remaining: 2 },
+    ]);
+  });
+
+  it('vermelho na montanha: coleta 2 moedas e morre no 13; 2/3', () => {
+    const game = setup(P3_DENSITY);
+    const allEvents = run(game, RED_MOUNTAIN);
+
+    expect(game.state.step).toBe(13);
     expect(game.state.status).toBe('won');
     expect(game.state.lives).toBe(2);
     expect(trainInState(game.state, 'red').status).toEqual({
@@ -635,96 +638,25 @@ describe('P3 «Densidade» — sacrifício e falhas encenáveis', () => {
     expect(trainInState(game.state, 'green').status).toEqual({
       kind: 'delivered',
     });
-    expect(game.state.coinsCollected).toEqual([
-      pos(2, 2),
-      pos(1, 2),
-      pos(3, 2),
-    ]);
+    expect(game.state.coinsCollected).toEqual([pos(4, 2), pos(4, 3)]);
 
-    expect(derailsOf(result.events)).toEqual([
-      {
-        kind: 'trainDerailed',
-        trainId: 'red',
-        at: pos(4, 3),
-        direction: 'south',
-        reason: 'mountain',
-      },
-    ]);
-    expect(lifeLossesOf(result.events)).toEqual([
-      { kind: 'lifeLost', step: 10, remaining: 2 },
-    ]);
-    expect(eventKinds(result.events)).toEqual([
-      'trainMoved',
-      'trainDerailed',
-      'lifeLost',
-      'victory',
-    ]);
-  });
-
-  it('Y verde esquecido: vazio no 6; o vermelho entrega e vence 2/3', () => {
-    const game = setup(P3_LEVEL);
-
-    // Passos 1–5: o verde chega ao Y com o braço fatal (S).
-    for (const action of GREEN_FORGOTTEN.slice(0, 5)) {
-      game.apply(action);
-    }
-
-    expect(trainInState(game.state, 'green').status).toEqual({
-      kind: 'running',
-      cell: pos(5, 4),
-      incoming: 'east',
+    expect(derailsOf(allEvents)).toContainEqual({
+      kind: 'trainDerailed',
+      trainId: 'red',
+      at: pos(3, 3),
+      direction: 'west',
+      reason: 'mountain',
     });
-    expect(game.prediction('green')?.stop).toEqual({
-      kind: 'noExit',
-      cell: pos(5, 5),
-    });
-
-    const allEvents: GameEvent[] = [];
-
-    for (const action of GREEN_FORGOTTEN.slice(5)) {
-      const result = game.apply(action);
-
-      allEvents.push(...result.events);
-    }
-
-    expect(game.state.step).toBe(15);
-    expect(game.state.status).toBe('won');
-    expect(game.state.lives).toBe(2);
-    expect(trainInState(game.state, 'red').status).toEqual({
-      kind: 'delivered',
-    });
-    expect(trainInState(game.state, 'blue').status).toEqual({
-      kind: 'delivered',
-    });
-    expect(trainInState(game.state, 'green').status).toEqual({
-      kind: 'derailed',
-      reason: 'noExit',
-    });
-    expect(game.state.coinsCollected).toEqual([
-      pos(2, 2),
-      pos(1, 2),
-      pos(3, 2),
-    ]);
-
-    expect(derailsOf(allEvents)).toEqual([
-      {
-        kind: 'trainDerailed',
-        trainId: 'green',
-        at: pos(5, 5),
-        direction: 'south',
-        reason: 'noExit',
-      },
-    ]);
     expect(lifeLossesOf(allEvents)).toEqual([
-      { kind: 'lifeLost', step: 6, remaining: 2 },
+      { kind: 'lifeLost', step: 13, remaining: 2 },
     ]);
   });
 
-  it('lost em conteúdo: três perdas independentes zeram as vidas no 10', () => {
-    const game = setup(P3_LEVEL);
+  it('lost: três erros independentes zeram as vidas no 13', () => {
+    const game = setup(P3_DENSITY);
     const allEvents = run(game, LOST);
 
-    expect(game.state.step).toBe(10);
+    expect(game.state.step).toBe(13);
     expect(game.state.status).toBe('lost');
     expect(game.state.lives).toBe(0);
 
@@ -732,10 +664,6 @@ describe('P3 «Densidade» — sacrifício e falhas encenáveis', () => {
       expect(train.status.kind).toBe('derailed');
     }
 
-    expect(trainInState(game.state, 'red').status).toEqual({
-      kind: 'derailed',
-      reason: 'mountain',
-    });
     expect(trainInState(game.state, 'blue').status).toEqual({
       kind: 'derailed',
       reason: 'noExit',
@@ -744,62 +672,56 @@ describe('P3 «Densidade» — sacrifício e falhas encenáveis', () => {
       kind: 'derailed',
       reason: 'noExit',
     });
-
-    // O vermelho herda a moeda do X que o azul não coletou.
+    expect(trainInState(game.state, 'red').status).toEqual({
+      kind: 'derailed',
+      reason: 'mountain',
+    });
     expect(game.state.coinsCollected).toEqual([
-      pos(1, 2),
-      pos(2, 2),
-      pos(3, 2),
+      pos(5, 3),
+      pos(4, 2),
+      pos(4, 3),
     ]);
 
     expect(derailsOf(allEvents)).toEqual([
       {
         kind: 'trainDerailed',
         trainId: 'blue',
-        at: pos(2, 1),
+        at: pos(2, 4),
         direction: 'south',
         reason: 'noExit',
       },
       {
         kind: 'trainDerailed',
         trainId: 'green',
-        at: pos(5, 5),
-        direction: 'south',
+        at: pos(5, 3),
+        direction: 'north',
         reason: 'noExit',
       },
       {
         kind: 'trainDerailed',
         trainId: 'red',
-        at: pos(4, 3),
-        direction: 'south',
+        at: pos(3, 3),
+        direction: 'west',
         reason: 'mountain',
       },
     ]);
     expect(lifeLossesOf(allEvents)).toEqual([
-      { kind: 'lifeLost', step: 2, remaining: 2 },
+      { kind: 'lifeLost', step: 5, remaining: 2 },
       { kind: 'lifeLost', step: 6, remaining: 1 },
-      { kind: 'lifeLost', step: 10, remaining: 0 },
+      { kind: 'lifeLost', step: 13, remaining: 0 },
     ]);
-
-    // Depois do `lost`, o motor ignora novas ações.
-    const after = game.apply(PASS);
-
-    expect(after.advanced).toBe(false);
-    expect(game.state.step).toBe(10);
   });
 });
 
-describe('P3 «Densidade» — receitas de colisão (fabricadas no tabuleiro real)', () => {
-  it('cruzamento simultâneo: os dois trens chegam ao X (2,2) no mesmo passo', () => {
-    const red = P3_LEVEL.trains.find((train) => train.id === 'red');
-    const blue = P3_LEVEL.trains.find((train) => train.id === 'blue');
+describe('P3 «Densidade» (M6) — receitas de colisão do tabuleiro real', () => {
+  it('cruzamento simultâneo: os dois chegam ao X (2,2) no mesmo passo', () => {
+    const red = P3_DENSITY.trains.find((train) => train.id === 'red');
+    const blue = P3_DENSITY.trains.find((train) => train.id === 'blue');
 
     const result = resolveStep(
       gameState(
-        P3_LEVEL.board,
+        P3_DENSITY.board,
         [
-          // O vermelho vem do sul de (1,2) e a curva o joga para leste;
-          // o azul desce de (2,1). Os dois chegam ao X no mesmo passo.
           runningTrain('red', red!.color, red!.shape, pos(1, 2), 'north'),
           runningTrain('blue', blue!.color, blue!.shape, pos(2, 1), 'south'),
         ],
@@ -820,13 +742,13 @@ describe('P3 «Densidade» — receitas de colisão (fabricadas no tabuleiro rea
     ]);
   });
 
-  it('swap do túnel: os dois portais reais trocam no mesmo passo e colidem', () => {
-    const red = P3_LEVEL.trains.find((train) => train.id === 'red');
-    const blue = P3_LEVEL.trains.find((train) => train.id === 'blue');
+  it('swap dos túneis: os dois portais reais trocam no mesmo passo e colidem', () => {
+    const red = P3_DENSITY.trains.find((train) => train.id === 'red');
+    const blue = P3_DENSITY.trains.find((train) => train.id === 'blue');
 
     const result = resolveStep(
       gameState(
-        P3_LEVEL.board,
+        P3_DENSITY.board,
         [
           runningTrain('red', red!.color, red!.shape, pos(1, 4), 'east'),
           runningTrain('blue', blue!.color, blue!.shape, pos(4, 4), 'west'),

@@ -10,6 +10,16 @@
  * ficam em bordas com folga (topo e fundo), então os trens esperando fora da
  * grade são visíveis no primeiro quadro.
  *
+ * CONTRATO DE SAÍDA (§1 da proposta) — esta fase garante:
+ *   1. tocar move o tempo e todos os trens;
+ *   2. previsão e horizonte (a água do azul aparece no primeiro quadro);
+ *   3. Y por ABAB e leitura por conexão (o split depois da ponte);
+ *   5. moedas opcionais — a rota oeste coleta 5/5 (selo possível); a leste,
+ *      2/5, vence sem selo. A escolha é o trade-off da fase;
+ *   6. perda tolerada (3 vidas — água/estação errada vencem 1/2);
+ *   7. reiniciar é grátis.
+ *   (4 — seletor — foi apresentado no P1; aqui a ferramenta segue disponível.)
+ *
  * Mapa (colunas 0–5, linhas 0–5; linha 0 no topo):
  *
  *       0  1  2  3  4  5
@@ -37,15 +47,16 @@
  *     faz o laço Oeste (1,5)→(1,4)→(0,4)→(0,3)→(0,2)→(1,2)→(1,3)→(2,3),
  *     entra no merge (2,2), atravessa a ponte (3,2), segue (4,2) e chega ao
  *     split (5,2) no passo 13. O split precisa de arm 1 (S) para # (5,3) — a
- *     janela do P1, agora cobrada depois da ponte. Custo: 14 passos; coleta 5
- *     moedas (1,1), (3,2), (1,4), (0,4), (1,2).
+ *     janela do P1, agora cobrada depois da ponte. Custo: 14 passos; coleta as
+ *     5 moedas da fase — 5/5, a rota do selo.
  *   - LESTE/PONTA (atalho): o primeiro toque no Y de entrada troca para arm 1
  *     (L); o azul contorna a ponta de baixo do rio por (3,5)→(4,5)→(5,5)→
  *     (5,4)→(4,4)→(4,3) e entra em # direto, sem merge/ponte/split. Custo: o
  *     vermelho entrega no passo 11; o azul no 8; a fase fecha em 11 passos e
- *     coleta 3 moedas (1,1), (3,2), (4,4). Menos 3 passos, menos 2 moedas.
+ *     coleta 2 moedas (1,1), (3,2) — 2/5, sem selo. Menos 3 passos, menos 3
+ *     moedas.
  *
- * ROTA OESTE — SOLUÇÃO DOCUMENTADA (14 passos, 2/2, 3 vidas, 5 moedas)
+ * ROTA OESTE — SOLUÇÃO DOCUMENTADA (14 passos, 2/2, 3 vidas, 5/5 moedas)
  *   1. rotate (2,3)  curva rot 2 (S–O) → 3 (O–N); conserta a água do azul.
  *                     vermelho em (0,0); azul em (2,5) (os dois entram).
  *   2. passar        vermelho em (0,1); azul em (1,5).
@@ -86,13 +97,23 @@
  *   no 14. O primeiro toque é a rotação (2,3); o resto é espera.
  *
  *   Custos comparados (a escolha):
- *   rota oeste/ponte: 14 ações, 5 moedas, exige a rotação (2,3) + o rearme do
- *   split; a ponte é o cruzamento central e a moeda da ponte é do vermelho.
- *   rota leste/ponta: 11 ações, 3 moedas, exige só o toggle da entrada; o azul
- *   contorna a água pela ponta de baixo (3,5), sem merge/ponte/split.
+ *   rota oeste/ponte: 14 ações, 5/5 moedas (SELO), exige a rotação (2,3) + o
+ *   rearme do split; a ponte é o cruzamento central e a moeda da ponte é do
+ *   vermelho.
+ *   rota leste/ponta: 11 ações, 2/5 moedas (sem selo), exige só o toggle da
+ *   entrada; o azul contorna a água pela ponta de baixo (3,5), sem
+ *   merge/ponte/split.
  *   EXCEÇÃO DELIBERADA: o piso 12–20 vale para a rota OFICIAL (oeste, 14); a
  *   leste (11) é a escolha barata do trade-off — registrado para o designer
  *   confirmar em playtest.
+ *
+ * O SELO (correção do M3)
+ *   O P2 nasceu com 6 moedas, mas a 6ª — (4,4), no atalho leste — nunca era
+ *   alcançável junto com a rota oeste: 5/6 no máximo, selo impossível. O M6
+ *   remove a moeda do atalho: coinsTotal = 5, a rota oeste coleta 5/5 e o
+ *   selo fica bancável; a leste coleta 2/5 e vence sem selo. O trade-off
+ *   «oeste corajoso/paga mais» fica honesto — a rota que arrisca a ponte é a
+ *   rota da estrela.
  *
  * FALHAS E SACRIFÍCIO
  *   - ÁGUA (azul, ignorar o desvio): sem a rotação (2,3), o azul entra em
@@ -120,12 +141,13 @@
  *   inalcançável (máximo 2 eventos de perda), como o plano §2.2 registra.
  *   `deadEnd` e `won` dinâmico são os fins reais. Com 3 trens o `lost` seria
  *   alcançável, mas a densidade da grade de 6×6 com rio + ponte + duas rotas +
- *   6 moedas não paga: 3 trens aqui viraria o teste de densidade do P3, não o
+ *   5 moedas não paga: 3 trens aqui viraria o teste de densidade do P3, não o
  *   experimento Q2/Q5.
  *
- *   DECOYS: nenhuma peça fora de rota. As 6 moedas estão em trilho/bridge;
- *   (1,1) é a moeda fácil do vermelho (exceção), (3,2) é a moeda da ponte,
- *   (1,4)/(0,4)/(1,2) pagam o laço oeste e (4,4) paga o atalho leste.
+ *   DECOYS: nenhuma peça fora de rota. As 5 moedas estão em trilho/bridge;
+ *   (1,1) é a moeda fácil do vermelho (exceção), (3,2) é a moeda da ponte e
+ *   (1,4)/(0,4)/(1,2) pagam o laço oeste. A antiga moeda (4,4) do atalho leste
+ *   saiu no M6: com 5 no total, a rota oeste vira 5/5 (selo) e a leste 2/5.
  */
 
 import type {
@@ -215,7 +237,6 @@ export const P2_LEVEL: LevelLayout = {
     { col: 1, row: 4 },
     { col: 0, row: 4 },
     { col: 1, row: 2 },
-    { col: 4, row: 4 },
   ],
   trains: [
     {

@@ -87,6 +87,8 @@ export interface Scene {
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
   readonly selectorPulseAt: number | null;
+  /** O hint de apresentação do seletor está ativo (D24)? */
+  readonly selectorHintActive: boolean;
   /** Fase de ensino (D23): loja indisponível e «Recomeçar» no deadEnd (D1). */
   readonly tutorial: boolean;
   /** Preço do resgate (M4/D28). */
@@ -229,6 +231,7 @@ export function drawScene(
     walletTickAt: scene.walletTickAt,
     rotationDirection: scene.rotationDirection,
     selectorPulseAt: scene.selectorPulseAt,
+    selectorHintActive: scene.selectorHintActive,
     tutorial: scene.tutorial,
     rescuePrice: scene.rescuePrice,
     rescueEnabled: scene.rescueEnabled,

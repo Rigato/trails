@@ -19,6 +19,7 @@ import type {
 import { cellAt } from '../../src/core/types';
 import { setup } from '../../src/core/game';
 import { P2_LEVEL } from '../../src/level/p2';
+import { sealCondition } from '../../src/save/economy';
 import { firstHintTarget } from '../../src/render/fx';
 import {
   bridge,
@@ -128,7 +129,7 @@ const WEST_COINS = [
   pos(3, 2),
 ];
 
-const EAST_COINS = [pos(1, 1), pos(4, 4), pos(3, 2)];
+const EAST_COINS = [pos(1, 1), pos(3, 2)];
 
 /** Previsões dos trens, na ordem do layout. */
 function predictionsOf(game: Game): readonly Prediction[] {
@@ -199,7 +200,7 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
     });
   });
 
-  it('2 trens, 2 estações, 2 entradas-peça e 6 moedas sobre trilho/bridge', () => {
+  it('2 trens, 2 estações, 2 entradas-peça e 5 moedas sobre trilho/bridge', () => {
     const game = setup(P2_LEVEL);
     const red = trainInState(game.state, 'red');
     const blue = trainInState(game.state, 'blue');
@@ -255,7 +256,6 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
       pos(1, 4),
       pos(0, 4),
       pos(1, 2),
-      pos(4, 4),
     ]);
 
     for (const coin of P2_LEVEL.coins ?? []) {
@@ -327,7 +327,7 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
     }
   });
 
-  it('rota oeste/ponte: 14 passos, 2/2, 3 vidas, 5 moedas, sem dano', () => {
+  it('rota oeste/ponte: 14 passos, 2/2, 3 vidas, 5/5 moedas (selo possível)', () => {
     const game = setup(P2_LEVEL);
     const allEvents: GameEvent[] = [];
 
@@ -352,6 +352,16 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
       kind: 'delivered',
     });
     expect(game.state.coinsCollected).toEqual(WEST_COINS);
+    expect(game.state.coinsCollected).toHaveLength(P2_LEVEL.coins?.length ?? 0);
+    expect(
+      sealCondition({
+        delivered: 2,
+        trainTotal: P2_LEVEL.trains.length,
+        coins: game.state.coinsCollected.length,
+        coinsTotal: P2_LEVEL.coins?.length ?? 0,
+        consumableUsed: false,
+      }),
+    ).toBe(true);
 
     expect(collisionsOf(allEvents)).toHaveLength(0);
     expect(derailsOf(allEvents)).toHaveLength(0);
@@ -436,7 +446,7 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
     });
   });
 
-  it('atalho leste: 11 passos, 3 moedas, sem merge/ponte/split', () => {
+  it('atalho leste: 11 passos, 2/5 moedas, sem merge/ponte/split', () => {
     const game = setup(P2_LEVEL);
     const allEvents = run(game, EAST);
 
@@ -450,6 +460,16 @@ describe('P2 — fase «Obstáculos» (layout definitivo)', () => {
       kind: 'delivered',
     });
     expect(game.state.coinsCollected).toEqual(EAST_COINS);
+    expect(game.state.coinsCollected).toHaveLength(2);
+    expect(
+      sealCondition({
+        delivered: 2,
+        trainTotal: P2_LEVEL.trains.length,
+        coins: game.state.coinsCollected.length,
+        coinsTotal: P2_LEVEL.coins?.length ?? 0,
+        consumableUsed: false,
+      }),
+    ).toBe(false);
     expect(yAt(game, pos(5, 2))).toEqual({
       kind: 'y',
       rot: 3,

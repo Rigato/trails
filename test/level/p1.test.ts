@@ -14,6 +14,7 @@ import type {
   Game,
   GameEvent,
   Prediction,
+  RotationDirection,
   YPiece,
 } from '../../src/core/types';
 import { cellAt } from '../../src/core/types';
@@ -31,20 +32,26 @@ import {
 
 /** Ação da solução: toggle/giro de um Y ou «passar turno». */
 type SolutionAction =
-  | { readonly kind: 'toggle' | 'rotate'; readonly cell: CellPos }
+  | {
+      readonly kind: 'toggle' | 'rotate';
+      readonly cell: CellPos;
+      readonly turn?: RotationDirection;
+    }
   | { readonly kind: 'pass' };
 
 /** Toque no Y do split S. */
 const S = pos(2, 1);
 /** Toque no switch E que escolhe o comprimento do caminho azul. */
 const E = pos(4, 4);
+/** Curva do caminho longo do azul — a peça do contragiro. */
+const LONG_CURVE = pos(4, 2);
 
 /** Solução oficial de 12 passos, espelhada no comentário de `src/level/p1.ts`. */
 const SOLUTION: readonly SolutionAction[] = [
   { kind: 'toggle', cell: S }, // 1
   { kind: 'toggle', cell: E }, // 2
   { kind: 'rotate', cell: S }, // 3
-  { kind: 'pass' }, // 4
+  { kind: 'rotate', cell: LONG_CURVE, turn: 'ccw' }, // 4 — único CCW
   { kind: 'pass' }, // 5
   { kind: 'pass' }, // 6 — vermelho em M
   { kind: 'pass' }, // 7
@@ -85,7 +92,11 @@ function yAt(game: Game, cell: CellPos): YPiece {
 function applySolution(game: Game, action: SolutionAction) {
   return action.kind === 'pass'
     ? game.apply({ kind: 'pass' })
-    : game.apply({ kind: 'tap', cell: action.cell });
+    : game.apply({
+        kind: 'tap',
+        cell: action.cell,
+        ...(action.turn === undefined ? {} : { turn: action.turn }),
+      });
 }
 
 /** Classificação esperada de cada ação da solução. */
@@ -105,6 +116,8 @@ describe('P1 — fase «Sincronia» (layout definitivo)', () => {
     expect(board.height).toBe(6);
     expect(P1_LEVEL.lives).toBe(3);
     expect(P1_LEVEL.trains).toHaveLength(2);
+    expect(P1_LEVEL.tutorial).toBe(true);
+    expect(P1_LEVEL.selectorHint).toBe(true);
 
     const game = setup(P1_LEVEL);
     const red = trainInState(game.state, 'red');
@@ -155,6 +168,12 @@ describe('P1 — fase «Sincronia» (layout definitivo)', () => {
     );
 
     expect(yCount).toBe(4);
+
+    // A curva do contragiro nasce um quarto depois da correta (rot 3 → 2).
+    expect(cellAt(board, LONG_CURVE)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'curve', rot: 3 },
+    });
 
     // Estados iniciais dos quatro Ys (o contrato do ABAB).
     expect(yAt(game, S)).toEqual({ kind: 'y', rot: 1, arm: 1, next: 'toggle' });
@@ -222,6 +241,94 @@ describe('P1 — fase «Sincronia» (layout definitivo)', () => {
     expect(third.outcome.kind).toBe('toggled');
     expect(game.state.step).toBe(3);
     expect(yAt(game, S)).toEqual({ kind: 'y', rot: 2, arm: 1, next: 'rotate' });
+  });
+
+  it('contragiro: a curva (4,2) nasce 3 quartos adiantada e a solução usa 1 CCW', () => {
+    const game = setup(P1_LEVEL);
+
+    for (const action of SOLUTION.slice(0, 3)) {
+      applySolution(game, action);
+    }
+
+    // O azul já está na boca da peça; o CW ainda precisaria de três toques.
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'running',
+      cell: pos(4, 3),
+      incoming: 'north',
+    });
+    expect(cellAt(game.state.board, LONG_CURVE)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'curve', rot: 3 },
+    });
+
+    const fourth = applySolution(game, SOLUTION[3]!);
+
+    expect(fourth.outcome.kind).toBe('rotated');
+    expect(game.state.step).toBe(4);
+    expect(cellAt(game.state.board, LONG_CURVE)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'curve', rot: 2 },
+    });
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'running',
+      cell: LONG_CURVE,
+      incoming: 'north',
+    });
+
+    // A peça aceita o azul: a previsão segue por (3,2)/(3,3)/M até S. A janela
+    // do split ainda não foi rearmada, então o destino visível é @ (X de cor).
+    const bluePrediction = game.prediction('blue');
+
+    expect(bluePrediction?.path).toContainEqual(pos(4, 2));
+    expect(bluePrediction?.path).toContainEqual(pos(3, 2));
+    expect(bluePrediction?.path).toContainEqual(pos(3, 3));
+    expect(bluePrediction?.stop).toEqual({
+      kind: 'station',
+      cell: pos(1, 1),
+      correct: false,
+    });
+
+    const ccwMoves = SOLUTION.filter(
+      (action) => action.kind === 'rotate' && action.turn === 'ccw',
+    );
+
+    expect(ccwMoves).toHaveLength(1);
+  });
+
+  it('CW no passo 4 não substitui o CCW: o azul morre em (4,2) por noExit', () => {
+    const game = setup(P1_LEVEL);
+
+    for (const action of SOLUTION.slice(0, 3)) {
+      applySolution(game, action);
+    }
+
+    const fourth = game.apply({
+      kind: 'tap',
+      cell: LONG_CURVE,
+      turn: 'cw',
+    });
+
+    expect(fourth.outcome.kind).toBe('rotated');
+    expect(cellAt(game.state.board, LONG_CURVE)).toEqual({
+      kind: 'piece',
+      piece: { kind: 'curve', rot: 0 },
+    });
+    expect(trainInState(game.state, 'blue').status).toEqual({
+      kind: 'derailed',
+      reason: 'noExit',
+    });
+    expect(derailsOf(fourth.events)).toEqual([
+      {
+        kind: 'trainDerailed',
+        trainId: 'blue',
+        at: LONG_CURVE,
+        direction: 'north',
+        reason: 'noExit',
+      },
+    ]);
+    expect(lifeLossesOf(fourth.events)).toEqual([
+      { kind: 'lifeLost', step: 4, remaining: 2 },
+    ]);
   });
 
   it('a solução de 12 passos entrega 2/2 com 3 vidas, sem colisão/descarrilamento', () => {

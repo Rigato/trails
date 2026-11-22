@@ -43,6 +43,7 @@ import { COIN_COLOR, drawCoinGlyph, drawCoinTick } from './coin';
 import {
   CELL_FLASH_MS,
   coinTickProgress,
+  hintPulseIntensity,
   lifePulseProgress,
   lifePulseRing,
   lifePulseScale,
@@ -76,6 +77,8 @@ export interface HudContext {
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
   readonly selectorPulseAt: number | null;
+  /** O hint de apresentação do seletor está ativo (D24)? */
+  readonly selectorHintActive: boolean;
   /** Fase de ensino (D23): a loja não aparece; deadEnd usa «Recomeçar» (D1). */
   readonly tutorial: boolean;
   /** Preço do resgate (D28), exibido no botão. */
@@ -505,6 +508,11 @@ function drawRescueButton(
  * Mesma superfície contornada do «Recomeçar»; o conteúdo é só o glifo de seta
  * circular grande na cor estrutural do HUD. O pulso de escala (`selectorPulseMs`)
  * confirma a troca de sentido sem avançar passo — é ferramenta, não turno (D26).
+ *
+ * D24: na fase que apresenta o seletor, um anel respira em volta do botão na
+ * mesma família/ritmo do halo D6 (`firstHintPulseMs`/`hintPulseIntensity`).
+ * Ele nasce depois da primeira interação com um Y e para no primeiro uso do
+ * seletor; é um hint de apresentação, não o `firstHint` das peças.
  */
 function drawRotationButton(
   ctx: CanvasRenderingContext2D,
@@ -512,11 +520,36 @@ function drawRotationButton(
   context: HudContext,
 ): void {
   const rect = layout.rotationButton;
+  const hint = context.selectorHintActive
+    ? hintPulseIntensity(context.now)
+    : 0;
 
   ctx.save();
   drawButtonSurface(ctx, rect, false);
 
-  const scale = selectorPulseScale(context.selectorPulseAt, context.now);
+  if (hint > 0) {
+    const expand = rect.height * (0.05 + 0.05 * hint);
+    const radius = Math.max(6, rect.height * 0.24 + expand);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(
+      rect.x - expand,
+      rect.y - expand,
+      Math.max(1, rect.width + expand * 2),
+      Math.max(1, rect.height + expand * 2),
+      radius,
+    );
+    ctx.globalAlpha = 0.16 + 0.3 * hint;
+    ctx.strokeStyle = PALETTE.track;
+    ctx.lineWidth = Math.max(2, rect.height * 0.045);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const scale =
+    selectorPulseScale(context.selectorPulseAt, context.now) *
+    (1 + 0.08 * hint);
   const cx = rect.x + rect.width / 2;
   const cy = rect.y + rect.height / 2;
   const radius = Math.min(rect.width, rect.height) * 0.27;

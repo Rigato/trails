@@ -275,6 +275,23 @@ let rotationDirection: RotationDirection = 'cw';
 /** Início do pulso do glifo do seletor ao alternar; `null` = sem pulso. */
 let selectorPulseAt: number | null = null;
 
+/**
+ * Apresentação do seletor (D24) — estado da run atual.
+ *
+ * `yTouched` liga na primeira interação com um Y (`toggled`/`rotated`); o
+ * pulso do botão-ferramenta nasce aí. `selectorUsedThisRun` liga no primeiro
+ * uso do seletor e desliga o pulso para sempre NESTA run: o jogador já viu a
+ * ferramenta. Os dois zeram em reset/troca de fase; o sentido ativo do seletor
+ * (ferramenta global) NÃO é tocado.
+ */
+let yTouched = false;
+let selectorUsedThisRun = false;
+
+/** O hint de apresentação do seletor está ativo agora? (D24) */
+function selectorHintActive(): boolean {
+  return level.selectorHint === true && yTouched && !selectorUsedThisRun;
+}
+
 /** A fase atual tem sucessora? Decide «Próxima fase» vs. «Jogar de novo». */
 function hasNextPhase(): boolean {
   return phaseIndex < PHASES.length - 1;
@@ -720,6 +737,18 @@ function drainAvailable(now: number): void {
       firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
 
+      // D24: a primeira interação com um Y liga o hint de apresentação do
+      // seletor. O `firstHint` das peças continua sendo só o halo D6 acima.
+      for (const event of result.events) {
+        if (
+          (event.kind === 'pieceToggled' ||
+            event.kind === 'pieceRotated') &&
+          event.to.kind === 'y'
+        ) {
+          yTouched = true;
+        }
+      }
+
       // D28: o alvo do resgate é o ÚLTIMO `trainDerailed` da run. Percorrer o
       // array na ordem cobre empate no mesmo passo (o último evento vence) e
       // cada evento de colisão emite um `trainDerailed` por participante.
@@ -822,6 +851,10 @@ function finishStep(now: number): void {
  * um tap de célula o captura no enqueue. Reset e troca de fase não tocam aqui.
  */
 function onRotationToggle(): void {
+  // D24: o primeiro uso do seletor nesta run encerra o hint de apresentação.
+  // A seta continua alternando e o pulso breve confirma; o estado do sentido
+  // não é resetado por troca de fase (ferramenta global).
+  selectorUsedThisRun = true;
   rotationDirection = rotationDirection === 'cw' ? 'ccw' : 'cw';
   selectorPulseAt = performance.now();
   draw(selectorPulseAt);
@@ -856,6 +889,8 @@ function onReset(): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  yTouched = false;
+  selectorUsedThisRun = false;
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
@@ -892,6 +927,8 @@ function loadPhase(index: number): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  yTouched = false;
+  selectorUsedThisRun = false;
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
@@ -964,6 +1001,8 @@ function returnToList(): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  yTouched = false;
+  selectorUsedThisRun = false;
   rescuesUsed = 0;
   lastDerailedId = null;
   rescueDeniedAt = null;
@@ -1416,6 +1455,7 @@ function draw(now: number): void {
     walletTickAt,
     rotationDirection,
     selectorPulseAt,
+    selectorHintActive: selectorHintActive(),
     tutorial: level.tutorial === true,
     rescuePrice: TUNING.rescuePrice,
     rescueEnabled: rescueAvailable(),
@@ -1574,6 +1614,8 @@ declare global {
       readonly stepEndsAt: number | null;
       /** Sentido ativo do seletor CW/CCW (M1/D22–D26), somente leitura. */
       readonly rotationDirection: RotationDirection;
+      /** O hint de apresentação do seletor está pulsando agora? (D24) */
+      readonly selectorHintActive: boolean;
       /** Modo de tela (M2): home da lista ou partida. */
       readonly screenMode: ScreenMode;
       /** Snapshot somente-leitura do save carregado (M2/M3). */
@@ -1668,6 +1710,9 @@ window.__trailsDebug = {
   },
   get rotationDirection() {
     return rotationDirection;
+  },
+  get selectorHintActive() {
+    return selectorHintActive();
   },
   get screenMode() {
     return screenMode;

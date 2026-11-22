@@ -412,6 +412,11 @@ export interface TrainSetup {
  * apresentar o tutorial sem vidas e para manter a loja indisponível. É dado
  * opcional (ausente = fase normal), então nenhum layout antigo precisa mudar;
  * o M6 reorganiza a cadeia e consolida a marcação.
+ *
+ * `selectorHint` apresenta o seletor CW/CCW (D24) na fase: depois da primeira
+ * interação com um Y e até o primeiro uso do seletor, o botão-ferramenta pulsa
+ * na família D6. É um hint de APRESENTAÇÃO, separado do `firstHint` das peças
+ * (que continua derivado da previsão); ausente = sem pulso.
  */
 export interface LevelLayout {
   readonly id: string;
@@ -422,6 +427,8 @@ export interface LevelLayout {
   readonly coins?: readonly CellPos[];
   /** Fase de ensino (D23); ausente = fase normal. */
   readonly tutorial?: boolean;
+  /** Apresenta o seletor após o primeiro Y (D24); ausente = sem hint. */
+  readonly selectorHint?: boolean;
 }
 
 /**
