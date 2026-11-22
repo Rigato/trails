@@ -18,6 +18,13 @@
  * a vitória banca, o glifo faz o tick da família E13; a coleta no tabuleiro
  * continua com o pulse dela, independente do header.
  *
+ * M4/D28: em `deadEnd` de fase NÃO-tutorial, a fileira inferior vira dois
+ * botões de meia-largura — «Resgatar · preço» (acento dourado + glifo de
+ * moeda) e «Desistir» (contornado, efeito do antigo «Recomeçar»). Sem carteira
+ * ou com o resgate da run já usado, o botão de resgate fica opaco e o toque
+ * apenas pisca (D3). Tutorial mantém o botão único de largura total; `won` e
+ * `lost` não mudam (D11: resgate não devolve vida).
+ *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
  * E8: a marca que acabou de esvaziar pulsa (cresce + anel, `lifeLostPulseMs`),
@@ -26,8 +33,9 @@
 
 import type { GameState, RotationDirection } from '../core/types';
 import { TUNING } from '../config/tuning';
-import { drawCoinGlyph, drawCoinTick } from './coin';
+import { COIN_COLOR, drawCoinGlyph, drawCoinTick } from './coin';
 import {
+  CELL_FLASH_MS,
   coinTickProgress,
   lifePulseProgress,
   lifePulseRing,
@@ -62,6 +70,14 @@ export interface HudContext {
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
   readonly selectorPulseAt: number | null;
+  /** Fase de ensino (D23): a loja não aparece; deadEnd usa «Recomeçar» (D1). */
+  readonly tutorial: boolean;
+  /** Preço do resgate (D28), exibido no botão. */
+  readonly rescuePrice: number;
+  /** O resgate é comprável agora (resgate restante + carteira)? */
+  readonly rescueEnabled: boolean;
+  /** Início do flash de toque no resgate indisponível; `null` = sem flash. */
+  readonly rescueDeniedAt: number | null;
 }
 
 /**
@@ -89,6 +105,12 @@ export function drawHud(
   context: HudContext,
 ): void {
   drawHeader(ctx, layout, state, levelName, context);
+
+  if (state.status === 'deadEnd' && !context.tutorial) {
+    drawRescueButton(ctx, layout, layout.rescueButton, context);
+    drawButton(ctx, layout, layout.surrenderButton, 'Desistir', false, true);
+    return;
+  }
 
   if (isEnded(state)) {
     const winner = state.trains.find((train) => train.status.kind === 'delivered');
@@ -388,6 +410,73 @@ function drawButton(
     rect.y + rect.height / 2 + 0.5,
     rect.width * 0.86,
   );
+  ctx.restore();
+}
+
+/**
+ * «Resgatar · preço» (D28): botão de meia-largura com acento dourado da moeda.
+ *
+ * A superfície é contornada (como o «Desistir» ao lado), mas a borda e o glifo
+ * usam o ouro do `COIN_COLOR` — o custo é econômico, não uma ação de turno.
+ * Indisponível (sem carteira ou resgate da run já usado) fica opaco; o toque
+ * pisca a superfície (família D3) sem executar nada.
+ */
+function drawRescueButton(
+  ctx: CanvasRenderingContext2D,
+  layout: SceneLayout,
+  rect: Rect,
+  context: HudContext,
+): void {
+  const radius = rect.height * 0.3;
+  const size = layout.buttonFontSize;
+  const label = `Resgatar · ${context.rescuePrice}`;
+  const cy = rect.y + rect.height / 2;
+
+  ctx.save();
+  ctx.globalAlpha = context.rescueEnabled ? 1 : 0.42;
+
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.fillStyle = PALETTE.background;
+  ctx.fill();
+  ctx.strokeStyle = COIN_COLOR;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = `600 ${size}px ${FONT_STACK}`;
+  const textLimit = rect.width * 0.62;
+  const textWidth = Math.min(textLimit, ctx.measureText(label).width);
+  const coinRadius = Math.max(3.5, size * 0.34);
+  const gap = Math.max(3, size * 0.26);
+  const groupWidth = coinRadius * 2 + gap + textWidth;
+  const left = rect.x + Math.max(0, (rect.width - groupWidth) / 2);
+
+  drawCoinGlyph(ctx, left + coinRadius, cy, coinRadius);
+
+  ctx.fillStyle = PALETTE.track;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, left + coinRadius * 2 + gap, cy + 0.5, textLimit);
+  ctx.restore();
+
+  if (context.rescueDeniedAt === null) {
+    return;
+  }
+
+  const elapsed = context.now - context.rescueDeniedAt;
+
+  if (!(elapsed >= 0) || elapsed >= CELL_FLASH_MS) {
+    return;
+  }
+
+  const intensity = 1 - elapsed / CELL_FLASH_MS;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.width, rect.height, radius);
+  ctx.globalAlpha = 0.16 * intensity;
+  ctx.fillStyle = PALETTE.track;
+  ctx.fill();
   ctx.restore();
 }
 

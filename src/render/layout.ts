@@ -23,9 +23,17 @@ export interface Rect {
  *
  * `rotation` é o botão-ferramenta do seletor CW/CCW (D22/D25): alternar o
  * sentido é imediato e não passa pelo buffer. `list` é a saída para a lista de
- * fases (M2): abandona a run sem confirmar e sem tocar no save.
+ * fases (M2): abandona a run sem confirmar e sem tocar no save. `rescue` e
+ * `surrender` só existem no prompt de não-vencível (M4/D28): resgatar o último
+ * trem perdido ou desistir da run.
  */
-export type HudTarget = 'pass' | 'reset' | 'rotation' | 'list';
+export type HudTarget =
+  | 'pass'
+  | 'reset'
+  | 'rotation'
+  | 'list'
+  | 'rescue'
+  | 'surrender';
 
 /** Layout completo de um quadro. Recalculado a cada resize. */
 export interface SceneLayout {
@@ -45,6 +53,14 @@ export interface SceneLayout {
   readonly resetButton: Rect;
   /** Seletor CW/CCW compacto, entre os dois botões (D25). */
   readonly rotationButton: Rect;
+  /**
+   * «Resgatar · preço» — metade esquerda da fileira inferior no prompt de
+   * não-vencível (D28). Só é desenhado/hit-testado nesse prompt; nos demais
+   * estados a fileira é a de três alvos.
+   */
+  readonly rescueButton: Rect;
+  /** «Desistir» — metade direita do prompt de não-vencível (D28). */
+  readonly surrenderButton: Rect;
   /**
    * Glifo de volta para a lista, no canto esquerdo do cabeçalho (M2).
    *
@@ -150,6 +166,7 @@ export function computeLayout(width: number, height: number, board: Board): Scen
     0,
     (buttonRowWidth - rotationWidth - gap * 2) / 2,
   );
+  const promptButtonWidth = Math.max(0, (buttonRowWidth - gap) / 2);
 
   // Glifo da lista: alvo quadrado de 44 pt ancorado no canto esquerdo do
   // cabeçalho. Em shells estreitos ele desce alguns pixels sobre a primeira
@@ -187,6 +204,18 @@ export function computeLayout(width: number, height: number, board: Board): Scen
       x: buttonRowX + buttonWidth + gap + rotationWidth + gap,
       y: buttonY,
       width: buttonWidth,
+      height: buttonHeight,
+    },
+    rescueButton: {
+      x: buttonRowX,
+      y: buttonY,
+      width: promptButtonWidth,
+      height: buttonHeight,
+    },
+    surrenderButton: {
+      x: buttonRowX + promptButtonWidth + gap,
+      y: buttonY,
+      width: promptButtonWidth,
       height: buttonHeight,
     },
     listButton,
@@ -336,9 +365,24 @@ export function hudTargetAtPoint(
   layout: SceneLayout,
   x: number,
   y: number,
+  options?: { readonly rescuePrompt?: boolean },
 ): HudTarget | null {
   if (containsPoint(layout.listButton, x, y)) {
     return 'list';
+  }
+
+  // No prompt de não-vencível (D28) a fileira inferior é só
+  // resgatar/desistir; os três alvos normais estão cobertos por ela.
+  if (options?.rescuePrompt === true) {
+    if (containsPoint(layout.rescueButton, x, y)) {
+      return 'rescue';
+    }
+
+    if (containsPoint(layout.surrenderButton, x, y)) {
+      return 'surrender';
+    }
+
+    return null;
   }
 
   if (containsPoint(layout.passButton, x, y)) {

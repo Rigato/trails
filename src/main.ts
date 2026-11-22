@@ -29,6 +29,12 @@
  *    moedas, run sem consumíveis) UMA vez por fase. A persistência é única,
  *    junto do desbloqueio. Derrota/abandono não bancam nada; a carteira no
  *    header é o saldo persistente, e o painel de vitória mostra a conta.
+ * 9. M4/D28: no deadEnd de fase não-tutorial, a fileira inferior oferece
+ *    «Resgatar · 8» (carteira, 1/run) ou «Desistir» (grátis). O resgate NÃO é
+ *    ação: restaura o último trem perdido como `waiting` na entrada original,
+ *    não devolve a vida, deduz a carteira na hora (persistida) e marca
+ *    `consumableUsed` (selo bloqueado). O tutorial mantém o «Recomeçar» (D1);
+ *    `won`/`lost` não oferecem resgate (D11).
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
  * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
@@ -89,7 +95,12 @@ import { drawPhaseList } from './render/phasesList';
 import { drawScene, type TrainView } from './render/scene';
 import { directionAngle } from './render/train';
 import { drawVictoryPanel } from './render/victoryPanel';
-import { addSeal, sealCondition, victoryBanking } from './save/economy';
+import {
+  addSeal,
+  sealCondition,
+  spendFromWallet,
+  victoryBanking,
+} from './save/economy';
 import { nextUnlockedIndex, recommendedPhaseIndex } from './save/progress';
 import {
   createBrowserStorageBackend,
@@ -203,11 +214,22 @@ let saveState: SaveState = storage.load() ?? defaultSaveState();
 /**
  * A run atual usou algum consumível (D30)?
  *
- * Nasce `false` em cada setup/reset/troca de fase. NADA o liga no M3: o
- * resgate (M4) e o time-travel (M5) serão os únicos a marcá-lo, e o selo lê
- * este valor na vitória.
+ * Nasce `false` em cada setup/reset/troca de fase. O resgate (M4) e o
+ * time-travel (M5) são os únicos a marcá-lo; o selo lê este valor na vitória.
  */
 let consumableUsed = false;
+
+/**
+ * Resgates comprados nesta run (M4/D28) e alvo do próximo resgate.
+ *
+ * `lastDerailedId` é o trem do `trainDerailed` mais recente da run — o último
+ * do array de eventos quando dois caem no mesmo passo (D28). `rescuesUsed`
+ * zera em setup/reset/troca de fase; o limite vive no tuning.
+ */
+let rescuesUsed = 0;
+let lastDerailedId: TrainId | null = null;
+/** Início do flash do resgate indisponível; `null` = sem flash (D3). */
+let rescueDeniedAt: number | null = null;
 
 /** Resumo do banco da última vitória (painel + hook); `null` fora de vitória. */
 let lastVictoryBanking: VictorySummary | null = null;
@@ -376,6 +398,39 @@ function isFinished(): boolean {
     game.state.status === 'won' ||
     game.state.status === 'deadEnd' ||
     game.state.status === 'lost'
+  );
+}
+
+/**
+ * O prompt «Resgatar vs Desistir» está na tela? (M4/D28)
+ *
+ * Só em `deadEnd` de fase não-tutorial: o tutorial mantém o «Recomeçar» de
+ * largura total (D1) e `won`/`lost` não oferecem resgate (a vida não volta,
+ * D11). O prompt aparece mesmo sem carteira; nesse caso o botão fica opaco.
+ */
+function rescuePromptVisible(): boolean {
+  return game.state.status === 'deadEnd' && level.tutorial !== true;
+}
+
+/**
+ * O resgate é comprável agora? deadEnd + fase não-tutorial + resgate restante
+ * na run + carteira para o preço + alvo descarrilado (D28).
+ */
+function rescueAvailable(): boolean {
+  if (!rescuePromptVisible()) {
+    return false;
+  }
+
+  if (rescuesUsed >= TUNING.rescueLimitPerRun || lastDerailedId === null) {
+    return false;
+  }
+
+  if (saveState.wallet < TUNING.rescuePrice) {
+    return false;
+  }
+
+  return game.state.trains.some(
+    (train) => train.id === lastDerailedId && train.status.kind === 'derailed',
   );
 }
 
@@ -613,6 +668,15 @@ function drainAvailable(now: number): void {
       firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
 
+      // D28: o alvo do resgate é o ÚLTIMO `trainDerailed` da run. Percorrer o
+      // array na ordem cobre empate no mesmo passo (o último evento vence) e
+      // cada evento de colisão emite um `trainDerailed` por participante.
+      for (const event of result.events) {
+        if (event.kind === 'trainDerailed') {
+          lastDerailedId = event.trainId;
+        }
+      }
+
       // M2/M3: a vitória grava desbloqueio + carteira + selo AGORA, não no
       // toque de «Próxima fase» — um reload no meio da animação não perde a
       // conta.
@@ -740,6 +804,9 @@ function onReset(): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  rescuesUsed = 0;
+  lastDerailedId = null;
+  rescueDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -770,6 +837,9 @@ function loadPhase(index: number): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  rescuesUsed = 0;
+  lastDerailedId = null;
+  rescueDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -834,6 +904,9 @@ function returnToList(): void {
   coinPulses = [];
   coinTickAt = null;
   consumableUsed = false;
+  rescuesUsed = 0;
+  lastDerailedId = null;
+  rescueDeniedAt = null;
   lastVictoryBanking = null;
   victoryAt = null;
   walletTickAt = null;
@@ -853,6 +926,69 @@ function onFinishedAction(): void {
   }
 
   onReset();
+}
+
+/**
+ * Compra do «Resgate de trem» (M4/D28).
+ *
+ * A dedução da carteira é persistida NA HORA (a carteira é um valor entre
+ * sessões) e `consumableUsed` bloqueia o selo da run. O core restaura o último
+ * trem perdido como `waiting` na entrada original; a compra NÃO é ação e não
+ * avança `step` — o trem entra no próximo passo, como na partida (D13). A run
+ * continua em `playing`; o buffer é limpo para nenhuma ação da run morta
+ * sobreviver.
+ *
+ * Sem carteira ou sem resgate restante o botão já está opaco; um toque nele
+ * apenas pisca (D3) e nada muda.
+ */
+function onRescue(): void {
+  const now = performance.now();
+
+  if (!rescueAvailable() || lastDerailedId === null) {
+    rescueDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  const trainId = lastDerailedId;
+  const entry = level.trains.find((train) => train.id === trainId)?.entry;
+  const walletAfter = spendFromWallet(saveState.wallet, TUNING.rescuePrice);
+
+  if (entry === undefined || walletAfter === null) {
+    rescueDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  const rescued = game.rescue(trainId);
+
+  if (rescued === undefined) {
+    rescueDeniedAt = now;
+    draw(now);
+    return;
+  }
+
+  // Persistência imediata só da carteira; desbloqueio/selo continuam sendo
+  // escritos apenas na vitória. Uma falha de storage mantém o saldo em memória.
+  saveState = { ...saveState, wallet: walletAfter };
+  storage.persist(saveState);
+
+  consumableUsed = true;
+  rescuesUsed += 1;
+  rescueDeniedAt = null;
+  buffer.clear();
+  pendingStepAt = null;
+
+  // Pulso na entrada do trem resgatado — família D5/E13, sem passo gasto.
+  const train = rescued.trains.find((candidate) => candidate.id === trainId);
+
+  if (train !== undefined) {
+    pulses.push({ cell: entry.cell, color: train.color, startedAt: now });
+  }
+
+  predictions = collectPredictions();
+  firstHint = firstHintTarget(game.state, predictions);
+  draw(now);
 }
 
 /** Interpolação angular pelo caminho mais curto (radianos). */
@@ -1151,6 +1287,10 @@ function draw(now: number): void {
     walletTickAt,
     rotationDirection,
     selectorPulseAt,
+    tutorial: level.tutorial === true,
+    rescuePrice: TUNING.rescuePrice,
+    rescueEnabled: rescueAvailable(),
+    rescueDeniedAt,
   });
 
   // M3: a leitura econômica da run vive no painel sobre o tabuleiro; o botão
@@ -1178,6 +1318,13 @@ function frame(timestamp: number): void {
     timestamp - lockedCardFlash.startedAt >= CELL_FLASH_MS
   ) {
     lockedCardFlash = null;
+  }
+
+  if (
+    rescueDeniedAt !== null &&
+    timestamp - rescueDeniedAt >= CELL_FLASH_MS
+  ) {
+    rescueDeniedAt = null;
   }
 
   if (pendingStepAt !== null && timestamp >= pendingStepAt) {
@@ -1240,6 +1387,8 @@ attachPointerInput(canvas, {
   onReset,
   onFinishedAction,
   isFinished,
+  isRescuePrompt: rescuePromptVisible,
+  onRescue,
   getRotationDirection: () => rotationDirection,
   onRotationToggle,
 });
@@ -1290,8 +1439,18 @@ declare global {
       readonly wallet: number;
       /** Ids de fase com selo de perfeição (M3; leitura do save). */
       readonly seals: readonly string[];
-      /** A run atual usou consumível? M3 sempre `false`; M4/M5 ligam. */
+      /** A run atual usou consumível? M4 liga no resgate; M5 no time-travel. */
       readonly consumableUsed: boolean;
+      /** Resgates comprados nesta run (M4/D28), zerado a cada run. */
+      readonly rescuesUsed: number;
+      /** O resgate está comprável agora (deadEnd + não-tutorial + restante + carteira). */
+      readonly rescueAvailable: boolean;
+      /** Preço do resgate (tuning/D28). */
+      readonly rescuePrice: number;
+      /** Trem do último `trainDerailed` da run; alvo do resgate. */
+      readonly lastDerailedId: TrainId | null;
+      /** A fase atual é de ensino (D23)? */
+      readonly tutorialPhase: boolean;
       /** Banco da última vitória (M3); `null` após reset/troca de fase. */
       readonly lastVictoryBanking: VictorySummary | null;
       /** Menor índice de fase desbloqueado (a recomendada). */
@@ -1373,6 +1532,21 @@ window.__trailsDebug = {
   },
   get consumableUsed() {
     return consumableUsed;
+  },
+  get rescuesUsed() {
+    return rescuesUsed;
+  },
+  get rescueAvailable() {
+    return rescueAvailable();
+  },
+  get rescuePrice() {
+    return TUNING.rescuePrice;
+  },
+  get lastDerailedId() {
+    return lastDerailedId;
+  },
+  get tutorialPhase() {
+    return level.tutorial === true;
   },
   get lastVictoryBanking() {
     return lastVictoryBanking;

@@ -56,6 +56,7 @@ O jogo real começa em **3 trens** (D20/D32): 12 fases em 3 faixas de 4, cada fa
 
 ### M7 — E2a · Faixa 1 do jogo real · level design — **o trabalho central começa**
 - **Conteúdo:** 4 fases de 3 trens (`level/real/`), **toda 100% viável** (D32); aquecimento pelo **layout** — recurso disputado em janelas diferentes, janelas generosas, contragiro como lance; fase 1 = a mais suave do jogo real; curva com vale interno (fácil → sobe → pico na 3ª → vale na 4ª); validação por fase contra o **checklist de 6 pontos** (recurso disputado · janela legível · dois andares de sucesso · uma ideia dominante · morte com antecedência ≥6 · espaço para experimentar).
+- **Requisito do M4 (achado de validação):** ao menos uma fase da faixa precisa de janela de **colisão dupla real** (3 trens/3 vidas: 1 evento mata 2 + 1 morte solo → `deadEnd` com 1 vida restante) — é o único lugar onde o prompt do resgate acontece no jogo real; sem ela a loja é inalcançável (P3+ 4 trens/3 vidas não produz `deadEnd`: `lost` dispara antes).
 - **Pronto quando:** cada fase tem nome-de-ideia numa linha, solução documentada (12–20 passos), solução perfeita (todos+moedas) visivelmente mais difícil, walkthrough + testes de solvabilidade/viabilidade; `lost` alcançável sem provável; **o designer quer rejogar**.
 
 ### M8 — GATE do designer

@@ -206,6 +206,7 @@ const board: Board = {
 export const P2_LEVEL: LevelLayout = {
   id: 'p2-obstaculos',
   name: 'P2 — Obstáculos',
+  tutorial: true,
   board,
   lives: 3,
   coins: [

@@ -63,9 +63,14 @@ export interface PointerInputHandlers {
   /**
    * A run terminou? Quando sim, o HUD mostra um único botão de largura total
    * (D1/D5) e qualquer toque dentro dele executa a ação de fim — inclusive no
-   * vão central.
+   * vão central. Em `deadEnd` não-tutorial o prompt de resgate substitui a
+   * fileira (M4/D28), e `isRescuePrompt` decide o hit-test.
    */
   readonly isFinished?: () => boolean;
+  /** O prompt «Resgatar vs Desistir» está na tela? (M4/D28) */
+  readonly isRescuePrompt?: () => boolean;
+  /** Toque em «Resgatar»; o shell valida carteira/limite e aplica o efeito. */
+  readonly onRescue?: () => void;
 }
 
 function containsPoint(rect: Rect, x: number, y: number): boolean {
@@ -119,9 +124,32 @@ export function attachPointerInput(
       return;
     }
 
-    if (handlers.isFinished?.() && containsPoint(fullWidthHudButton(layout), x, y)) {
-      (handlers.onFinishedAction ?? handlers.onReset)();
-      return;
+    if (handlers.isFinished?.()) {
+      if (handlers.isRescuePrompt?.()) {
+        const target = hudTargetAtPoint(layout, x, y, { rescuePrompt: true });
+
+        if (target === 'list') {
+          handlers.onListBack?.();
+          return;
+        }
+
+        if (target === 'rescue') {
+          handlers.onRescue?.();
+          return;
+        }
+
+        if (target === 'surrender') {
+          (handlers.onFinishedAction ?? handlers.onReset)();
+          return;
+        }
+
+        return;
+      }
+
+      if (containsPoint(fullWidthHudButton(layout), x, y)) {
+        (handlers.onFinishedAction ?? handlers.onReset)();
+        return;
+      }
     }
 
     const hudTarget = hudTargetAtPoint(layout, x, y);

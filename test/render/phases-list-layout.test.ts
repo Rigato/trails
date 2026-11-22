@@ -110,3 +110,79 @@ describe('HUD — glifo de volta para a lista', () => {
     }
   });
 });
+
+describe('HUD — prompt de resgate (M4/D28)', () => {
+  it('os dois botões dividem a fileira em metades ≥ 44 pt, sem sobrepor', () => {
+    for (const [width, height] of [
+      [360, 640],
+      [320, 568],
+    ] as const) {
+      const layout = computeLayout(width, height, P0_LEVEL.board);
+      const { rescueButton, surrenderButton } = layout;
+
+      for (const rect of [rescueButton, surrenderButton]) {
+        expect(rect.height).toBeGreaterThanOrEqual(MIN_TOUCH);
+        expect(rect.width).toBeGreaterThanOrEqual(MIN_TOUCH);
+        expect(rect.x).toBeGreaterThanOrEqual(0);
+        expect(rect.y).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.width).toBeLessThanOrEqual(layout.width + 0.001);
+        expect(rect.y + rect.height).toBeLessThanOrEqual(layout.height + 0.001);
+      }
+
+      expect(rescueButton.x + rescueButton.width).toBeLessThan(
+        surrenderButton.x,
+      );
+      expect(rescueButton.x).toBe(layout.passButton.x);
+      expect(surrenderButton.x + surrenderButton.width).toBe(
+        layout.resetButton.x + layout.resetButton.width,
+      );
+    }
+  });
+
+  it('no prompt o hit-test devolve rescue/surrender; fora dele, os três alvos normais', () => {
+    const layout = computeLayout(360, 640, P0_LEVEL.board);
+
+    for (const [target, rect] of [
+      ['rescue', layout.rescueButton],
+      ['surrender', layout.surrenderButton],
+    ] as const) {
+      expect(
+        hudTargetAtPoint(
+          layout,
+          rect.x + rect.width / 2,
+          rect.y + rect.height / 2,
+          { rescuePrompt: true },
+        ),
+      ).toBe(target);
+    }
+
+    // No prompt, o centro da fileira é resgatar (não «Passar turno»).
+    expect(
+      hudTargetAtPoint(
+        layout,
+        layout.passButton.x + layout.passButton.width / 2,
+        layout.passButton.y + layout.passButton.height / 2,
+        { rescuePrompt: true },
+      ),
+    ).toBe('rescue');
+
+    // Fora do prompt, os alvos normais seguem valendo.
+    expect(
+      hudTargetAtPoint(
+        layout,
+        layout.passButton.x + layout.passButton.width / 2,
+        layout.passButton.y + layout.passButton.height / 2,
+      ),
+    ).toBe('pass');
+
+    // O glifo da lista continua acessível nos dois modos.
+    expect(
+      hudTargetAtPoint(
+        layout,
+        layout.listButton.x + layout.listButton.width / 2,
+        layout.listButton.y + layout.listButton.height / 2,
+        { rescuePrompt: true },
+      ),
+    ).toBe('list');
+  });
+});

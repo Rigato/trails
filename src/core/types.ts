@@ -407,6 +407,11 @@ export interface TrainSetup {
  * (peça móvel, inclusive cruzamento, ou ponte fixa), nunca água, montanha,
  * túnel, estação ou vazio. A lista é validada e pode ser omitida nas fases
  * sem moedas (P0/P1).
+ *
+ * `tutorial` marca as fases de ENSINO (D23): o shell usa a flag para
+ * apresentar o tutorial sem vidas e para manter a loja indisponível. É dado
+ * opcional (ausente = fase normal), então nenhum layout antigo precisa mudar;
+ * o M6 reorganiza a cadeia e consolida a marcação.
  */
 export interface LevelLayout {
   readonly id: string;
@@ -415,6 +420,8 @@ export interface LevelLayout {
   readonly trains: readonly TrainSetup[];
   readonly lives?: number;
   readonly coins?: readonly CellPos[];
+  /** Fase de ensino (D23); ausente = fase normal. */
+  readonly tutorial?: boolean;
 }
 
 /**
@@ -698,6 +705,13 @@ export interface Prediction {
  * descarrilado. `maxSteps` é o cap de segurança da simulação (default 24),
  * invisível ao jogador (D2).
  *
+ * `rescue` é o consumível «Resgate de trem» (D28): NÃO é ação e não avança
+ * passo. Em `deadEnd`, restaura o trem `derailed` indicado para `waiting` no
+ * seu `TrainSetup.entry` original (mesma célula e direção) e devolve o estado
+ * em `playing`; a vida perdida NÃO volta. Fora de `deadEnd`, trem desconhecido
+ * ou trem não descarrilado devolve `undefined` sem efeito. A re-entrada segue
+ * as regras gerais do próximo passo (D13), inclusive colisão.
+ *
  * `reset` restaura o estado inicial do layout e devolve o novo snapshot.
  * `setup(layout)` é a fábrica correspondente em `game.ts`.
  */
@@ -705,6 +719,7 @@ export interface Game {
   readonly state: GameState;
   apply(action: Action): ApplyResult;
   prediction(trainId: TrainId, maxSteps?: number): Prediction | undefined;
+  rescue(trainId: TrainId): GameState | undefined;
   reset(): GameState;
 }
 

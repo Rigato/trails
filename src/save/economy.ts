@@ -10,7 +10,9 @@
  * - `sealCondition` decide o selo de perfeição (D30): todos os trens, todas as
  *   moedas e nenhum consumível na run;
  * - `addSeal` grava o selo no máximo UMA vez por fase (D31): re-vitória
- *   perfeita não duplica a estrela.
+ *   perfeita não duplica a estrela;
+ * - `spendFromWallet` é a compra de consumível (M4/D28): deduz o preço ou
+ *   recusa sem inventar saldo negativo.
  *
  * A carteira pode repetir o banco em re-vitórias (farm aceito, D31); o selo,
  * não. `main.ts` persiste o resultado uma única vez, junto do desbloqueio.
@@ -135,4 +137,31 @@ export function addSeal(
   }
 
   return { seals: Object.freeze([...seals, levelId]), sealNew: true };
+}
+
+/**
+ * Deduz o preço de um consumível da carteira (M4/D28).
+ *
+ * Devolve o saldo novo ou `null` quando a compra não é possível: saldo
+ * insuficiente ou valores inválidos (não inteiros/negativos). A função é pura
+ * — persistir a dedução imediatamente é decisão do shell, porque a carteira é
+ * um valor ENTRE sessões e a compra não pode depender do fim da run.
+ *
+ * Preço `0` é válido e devolve o mesmo saldo; o tuning é quem decide o valor.
+ */
+export function spendFromWallet(wallet: number, price: number): number | null {
+  if (
+    !Number.isInteger(wallet) ||
+    wallet < 0 ||
+    !Number.isInteger(price) ||
+    price < 0
+  ) {
+    return null;
+  }
+
+  if (wallet < price) {
+    return null;
+  }
+
+  return wallet - price;
 }

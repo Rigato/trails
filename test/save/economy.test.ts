@@ -11,6 +11,7 @@ import {
   addSeal,
   bonusForDelivered,
   sealCondition,
+  spendFromWallet,
   victoryBanking,
 } from '../../src/save/economy';
 
@@ -144,5 +145,29 @@ describe('addSeal — selo não farmável (D31)', () => {
 
     expect(second.sealNew).toBe(true);
     expect(second.seals).toEqual(['p0-contrato', 'p1-sincronia']);
+  });
+});
+
+describe('spendFromWallet — compra de consumível (M4/D28)', () => {
+  it('deduz o preço do resgate e devolve o saldo novo', () => {
+    expect(spendFromWallet(20, 8)).toBe(12);
+    expect(spendFromWallet(8, 8)).toBe(0);
+    expect(spendFromWallet(9, 8)).toBe(1);
+  });
+
+  it('saldo insuficiente devolve null (não inventa saldo negativo)', () => {
+    expect(spendFromWallet(7, 8)).toBeNull();
+    expect(spendFromWallet(0, 8)).toBeNull();
+    expect(spendFromWallet(0, 1)).toBeNull();
+  });
+
+  it('valores inválidos devolvem null; preço 0 é compra válida', () => {
+    expect(spendFromWallet(-1, 8)).toBeNull();
+    expect(spendFromWallet(20, -8)).toBeNull();
+    expect(spendFromWallet(20.5, 8)).toBeNull();
+    expect(spendFromWallet(20, 8.5)).toBeNull();
+    expect(spendFromWallet(Number.NaN, 8)).toBeNull();
+    expect(spendFromWallet(20, Number.NaN)).toBeNull();
+    expect(spendFromWallet(20, 0)).toBe(20);
   });
 });

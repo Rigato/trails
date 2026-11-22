@@ -87,6 +87,14 @@ export interface Scene {
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
   readonly selectorPulseAt: number | null;
+  /** Fase de ensino (D23): loja indisponível e «Recomeçar» no deadEnd (D1). */
+  readonly tutorial: boolean;
+  /** Preço do resgate (M4/D28). */
+  readonly rescuePrice: number;
+  /** Resgate comprável agora (deadEnd + restante + carteira)? */
+  readonly rescueEnabled: boolean;
+  /** Início do flash do resgate indisponível (D3); `null` = sem flash. */
+  readonly rescueDeniedAt: number | null;
 }
 
 /** Desenha um quadro inteiro. */
@@ -213,6 +221,10 @@ export function drawScene(
     walletTickAt: scene.walletTickAt,
     rotationDirection: scene.rotationDirection,
     selectorPulseAt: scene.selectorPulseAt,
+    tutorial: scene.tutorial,
+    rescuePrice: scene.rescuePrice,
+    rescueEnabled: scene.rescueEnabled,
+    rescueDeniedAt: scene.rescueDeniedAt,
   });
   ctx.restore();
 }

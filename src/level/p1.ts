@@ -208,6 +208,7 @@ const board: Board = {
 export const P1_LEVEL: LevelLayout = {
   id: 'p1-sincronia',
   name: 'P1 — Sincronia',
+  tutorial: true,
   board,
   lives: 3,
   trains: [

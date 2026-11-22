@@ -217,6 +217,7 @@ const board: Board = {
 export const P3_LEVEL: LevelLayout = {
   id: 'p3-densidade',
   name: 'P3 — Densidade',
+  tutorial: true,
   board,
   lives: 3,
   coins: [

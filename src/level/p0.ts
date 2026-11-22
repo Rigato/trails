@@ -151,6 +151,7 @@ const board: Board = {
 export const P0_LEVEL: LevelLayout = {
   id: 'p0-contrato',
   name: 'P0 — Contrato',
+  tutorial: true,
   board,
   trains: [
     {

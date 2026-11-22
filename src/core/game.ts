@@ -13,12 +13,14 @@ import type {
   Bridge,
   CellPos,
   Direction,
+  EntryPoint,
   Fixed,
   Game,
   GameEvent,
   GameState,
   LevelLayout,
   Train,
+  TrainId,
 } from './types';
 import { cellAt, cellKey, cellsEqual, inBounds, neighbor } from './types';
 import {
@@ -549,12 +551,19 @@ function applyToState(
  *
  * `layout` é validado aqui; um layout inválido lança com mensagem clara. A
  * fachada devolve o snapshot atual em `state`, aplica ações com `apply`,
- * calcula previsões com `prediction` e restaura o início com `reset`.
+ * calcula previsões com `prediction`, restaura o início com `reset` e compra o
+ * resgate de um trem perdido com `rescue` (D28).
  */
 export function setup(layout: LevelLayout): Game {
   validateLayout(layout);
 
   const coinCells = layout.coins ?? [];
+  const entriesById = new Map<TrainId, EntryPoint>();
+
+  for (const trainSetup of layout.trains) {
+    entriesById.set(trainSetup.id, trainSetup.entry);
+  }
+
   let state = makeInitialState(layout);
 
   return {
@@ -576,6 +585,55 @@ export function setup(layout: LevelLayout): Game {
       }
 
       return predictPath(state.board, train, maxSteps);
+    },
+
+    /**
+     * Resgate de trem perdido (D28).
+     *
+     * Pré-condições estritas: a run está em `deadEnd` (sem trem ativo e sem
+     * entrega — o único momento em que a UI oferece a escolha) e o trem alvo
+     * está `derailed`. O trem volta ao `TrainSetup.entry` original como
+     * `waiting`, exatamente como na partida: o próximo passo o coloca na
+     * primeira célula e só o passo seguinte resolve a peça (D13). Nenhuma
+     * regra nova: colisão, célula ocupada e peça mudada desde a morte são
+     * resolvidas pelo `resolveStep` normal.
+     *
+     * A vida perdida NÃO é devolvida, `step` e `coinsCollected` não mudam, e a
+     * operação não passa pelo buffer (não é ação). Como `deadEnd` garante ao
+     * menos um trem não entregue, o estado restaurado tem trem ativo e volta a
+     * `playing`.
+     */
+    rescue(trainId) {
+      if (state.status !== 'deadEnd') {
+        return undefined;
+      }
+
+      const entry = entriesById.get(trainId);
+      const train = state.trains.find((candidate) => candidate.id === trainId);
+
+      if (entry === undefined || train === undefined) {
+        return undefined;
+      }
+
+      if (train.status.kind !== 'derailed') {
+        return undefined;
+      }
+
+      const trains = state.trains.map((candidate): Train =>
+        candidate.id === trainId
+          ? {
+              ...candidate,
+              status: {
+                kind: 'waiting',
+                cell: entry.cell,
+                direction: entry.direction,
+              },
+            }
+          : candidate,
+      );
+
+      state = { ...state, trains, status: 'playing' };
+      return state;
     },
 
     reset() {
