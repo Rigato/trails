@@ -10,6 +10,11 @@
  * sem `Action` e sem buffer — é ferramenta, não turno. Cada `tap` de célula
  * captura o sentido ativo no instante do toque (`turn`), que o buffer preserva
  * até o dreno.
+ *
+ * M2: o input também conhece o MODO DE TELA. Na lista, um card vira
+ * `onPhaseCardTap(index)` (quem decide bloqueado/desbloqueado é o `main.ts`);
+ * em jogo, o glifo do cabeçalho vira `onListBack()`. O modo entra por callback
+ * — o input continua sem guardar estado de jogo.
  */
 
 import type { Action, RotationDirection } from '../core/types';
@@ -17,14 +22,27 @@ import { fullWidthHudButton } from '../render/hud';
 import {
   cellAtPoint,
   hudTargetAtPoint,
+  phaseCardAtPoint,
+  type PhaseListLayout,
   type Rect,
   type SceneLayout,
 } from '../render/layout';
+
+/** Modo de tela do shell: home (lista) ou partida. */
+export type ScreenMode = 'list' | 'game';
 
 /** O que a costura em `main.ts` fornece ao input. */
 export interface PointerInputHandlers {
   /** Layout do quadro atual (recalculado a cada resize). */
   readonly getLayout: () => SceneLayout;
+  /** Modo atual; ausente = `'game'` (retrocompatível). */
+  readonly getScreenMode?: () => ScreenMode;
+  /** Layout da lista de fases; ausente quando o shell não a tem. */
+  readonly getPhaseListLayout?: () => PhaseListLayout | null;
+  /** Toque num card da lista; o índice é o da fase em `PHASES`. */
+  readonly onPhaseCardTap?: (index: number) => void;
+  /** Glifo do cabeçalho: abandona a run e volta para a lista. */
+  readonly onListBack?: () => void;
   /** Ação do contrato pronta para `game.apply`. */
   readonly onAction: (action: Action) => void;
   /** «Recomeçar»: restaura o estado inicial do layout. */
@@ -87,12 +105,31 @@ export function attachPointerInput(
     const x = (event.clientX - rect.left) * (layout.width / rect.width);
     const y = (event.clientY - rect.top) * (layout.height / rect.height);
 
+    if (handlers.getScreenMode?.() === 'list') {
+      const listLayout = handlers.getPhaseListLayout?.();
+
+      if (listLayout !== undefined && listLayout !== null) {
+        const index = phaseCardAtPoint(listLayout, x, y);
+
+        if (index !== null) {
+          handlers.onPhaseCardTap?.(index);
+        }
+      }
+
+      return;
+    }
+
     if (handlers.isFinished?.() && containsPoint(fullWidthHudButton(layout), x, y)) {
       (handlers.onFinishedAction ?? handlers.onReset)();
       return;
     }
 
     const hudTarget = hudTargetAtPoint(layout, x, y);
+
+    if (hudTarget === 'list') {
+      handlers.onListBack?.();
+      return;
+    }
 
     if (hudTarget === 'reset') {
       handlers.onReset();

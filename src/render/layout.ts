@@ -22,9 +22,10 @@ export interface Rect {
  * Alvo de toque do HUD.
  *
  * `rotation` é o botão-ferramenta do seletor CW/CCW (D22/D25): alternar o
- * sentido é imediato e não passa pelo buffer.
+ * sentido é imediato e não passa pelo buffer. `list` é a saída para a lista de
+ * fases (M2): abandona a run sem confirmar e sem tocar no save.
  */
-export type HudTarget = 'pass' | 'reset' | 'rotation';
+export type HudTarget = 'pass' | 'reset' | 'rotation' | 'list';
 
 /** Layout completo de um quadro. Recalculado a cada resize. */
 export interface SceneLayout {
@@ -44,8 +45,38 @@ export interface SceneLayout {
   readonly resetButton: Rect;
   /** Seletor CW/CCW compacto, entre os dois botões (D25). */
   readonly rotationButton: Rect;
+  /**
+   * Glifo de volta para a lista, no canto esquerdo do cabeçalho (M2).
+   *
+   * O alvo tem no mínimo `buttonMinCssPt` (44 pt) e pode exceder a faixa do
+   * cabeçalho — é o preço de manter o toque confortável sem engordar o header.
+   */
+  readonly listButton: Rect;
   readonly headerFontSize: number;
   readonly buttonFontSize: number;
+}
+
+/**
+ * Layout da lista de fases (home do jogo, M2).
+ *
+ * Grade de 2 colunas; cada card é um alvo de toque de no mínimo 44 pt. Até 16
+ * fases cabem sem scroll no shell 9:16 (8 linhas de cards).
+ */
+export interface PhaseListLayout {
+  readonly width: number;
+  readonly height: number;
+  /** Faixa do título «Trails» + carteira. */
+  readonly header: Rect;
+  readonly columns: number;
+  readonly rows: number;
+  /** Rect de cada fase, na ordem de `PHASES`; o índice é o da fase. */
+  readonly cards: readonly Rect[];
+  readonly gap: number;
+  readonly titleFontSize: number;
+  readonly walletFontSize: number;
+  readonly cardNumberFontSize: number;
+  readonly cardNameFontSize: number;
+  readonly cardRadius: number;
 }
 
 /** Espaçamento externo mínimo/máximo do shell, em px CSS. */
@@ -120,6 +151,18 @@ export function computeLayout(width: number, height: number, board: Board): Scen
     (buttonRowWidth - rotationWidth - gap * 2) / 2,
   );
 
+  // Glifo da lista: alvo quadrado de 44 pt ancorado no canto esquerdo do
+  // cabeçalho. Em shells estreitos ele desce alguns pixels sobre a primeira
+  // fileira do tabuleiro (o alvo manda mais que a faixa); em shells normais
+  // fica inteiro na margem + cabeçalho.
+  const listSize = Math.max(TUNING.buttonMinCssPt, headerHeight * 1.6);
+  const listButton: Rect = {
+    x: pad,
+    y: Math.max(0, pad + headerHeight / 2 - listSize / 2),
+    width: listSize,
+    height: listSize,
+  };
+
   return {
     width,
     height,
@@ -146,9 +189,90 @@ export function computeLayout(width: number, height: number, board: Board): Scen
       width: buttonWidth,
       height: buttonHeight,
     },
+    listButton,
     headerFontSize: clamp(width * 0.034, 11, 15),
     buttonFontSize: clamp(buttonHeight * 0.3, 13, 17),
   };
+}
+
+/**
+ * Calcula a lista de fases para um canvas `width`×`height` px CSS.
+ *
+ * A grade é sempre 2 colunas (card largo o bastante para número + nome +
+ * selo/cadeado). O cabeçalho é uma faixa própria, mais alta que o do jogo,
+ * porque carrega o título e a carteira. O vão entre cards é o mesmo nos dois
+ * eixos; o cálculo cabe 16 fases sem scroll no shell portrait de 320×568.
+ */
+export function computePhaseListLayout(
+  width: number,
+  height: number,
+  phaseCount: number,
+): PhaseListLayout {
+  const pad = clamp(width * 0.04, PAD_MIN, PAD_MAX);
+  const gap = clamp(width * 0.028, 7, 14);
+  const headerHeight = clamp(width * 0.1, 38, 56);
+  const header: Rect = {
+    x: pad,
+    y: pad,
+    width: width - pad * 2,
+    height: headerHeight,
+  };
+  const columns = 2;
+  const count = Math.max(0, Math.trunc(phaseCount));
+  const rows = Math.max(1, Math.ceil(count / columns));
+  const contentTop = header.y + header.height + gap;
+  const availableHeight = Math.max(0, height - pad - contentTop);
+  const cardHeight = Math.max(
+    TUNING.buttonMinCssPt,
+    (availableHeight - gap * (rows - 1)) / rows,
+  );
+  const cardWidth = Math.max(
+    TUNING.buttonMinCssPt,
+    (header.width - gap * (columns - 1)) / columns,
+  );
+  const cards: Rect[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+
+    cards.push({
+      x: header.x + column * (cardWidth + gap),
+      y: contentTop + row * (cardHeight + gap),
+      width: cardWidth,
+      height: cardHeight,
+    });
+  }
+
+  return {
+    width,
+    height,
+    header,
+    columns,
+    rows,
+    cards,
+    gap,
+    titleFontSize: clamp(headerHeight * 0.56, 20, 30),
+    walletFontSize: clamp(headerHeight * 0.42, 15, 22),
+    cardNumberFontSize: clamp(cardHeight * 0.34, 18, 30),
+    cardNameFontSize: clamp(cardHeight * 0.19, 10, 14),
+    cardRadius: Math.max(8, Math.min(14, cardHeight * 0.18)),
+  };
+}
+
+/** Índice do card de fase sob um ponto da lista, ou `null`. */
+export function phaseCardAtPoint(
+  layout: PhaseListLayout,
+  x: number,
+  y: number,
+): number | null {
+  for (const [index, card] of layout.cards.entries()) {
+    if (containsPoint(card, x, y)) {
+      return index;
+    }
+  }
+
+  return null;
 }
 
 /** Retângulo de uma célula em px CSS. */
@@ -213,6 +337,10 @@ export function hudTargetAtPoint(
   x: number,
   y: number,
 ): HudTarget | null {
+  if (containsPoint(layout.listButton, x, y)) {
+    return 'list';
+  }
+
   if (containsPoint(layout.passButton, x, y)) {
     return 'pass';
   }

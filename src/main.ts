@@ -19,6 +19,11 @@
  *    o sentido dos próximos taps (capturado no enqueue), pulsa o glifo e não
  *    toca no buffer; o estado sobrevive a reset e troca de fase. A varredura
  *    do giro deriva o sentido real de `from.rot → to.rot` (CCW = −90°).
+ * 7. M2/D30–D31: o boot abre a LISTA DE FASES (home), não a partida. O save
+ *    entre sessões é lido uma vez pelo `StorageService` e persiste a cada
+ *    vitória (desbloqueio da sucessora), na hora; reset de run e abandono para
+ *    a lista não tocam no save. Selos e carteira são só leitura/exibição neste
+ *    épico. O seletor CW/CCW atravessa lista ↔ jogo sem resetar.
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
  * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
@@ -44,7 +49,7 @@ import type {
 import { cellKey, directionOffset, opposite } from './core/types';
 import { ActionBuffer } from './core/buffer';
 import { setup } from './core/game';
-import { attachPointerInput } from './input/pointer';
+import { attachPointerInput, type ScreenMode } from './input/pointer';
 import { PHASES } from './level';
 import {
   CELL_FLASH_MS,
@@ -67,9 +72,24 @@ import {
   type LifeLostPulse,
   type TunnelMotion,
 } from './render/fx';
-import { cellCenter, computeLayout, type SceneLayout } from './render/layout';
+import {
+  cellCenter,
+  computeLayout,
+  computePhaseListLayout,
+  type PhaseListLayout,
+  type Rect,
+  type SceneLayout,
+} from './render/layout';
+import { drawPhaseList } from './render/phasesList';
 import { drawScene, type TrainView } from './render/scene';
 import { directionAngle } from './render/train';
+import { nextUnlockedIndex, recommendedPhaseIndex } from './save/progress';
+import {
+  createBrowserStorageBackend,
+  createStorageService,
+  defaultSaveState,
+  type SaveState,
+} from './save/storage';
 
 /** Proporção máxima largura/altura da faixa de jogo no desktop. */
 const SHELL_ASPECT = 9 / 16;
@@ -152,6 +172,34 @@ if (firstPhase === undefined) {
   throw new Error('PHASES vazio: o boot precisa de ao menos uma fase.');
 }
 
+/**
+ * Save entre sessões (M2/D31): uma única fronteira, backend localStorage.
+ *
+ * `?resetSave=1` é o reset explícito de QA: limpa ANTES do primeiro load, então
+ * o boot já nasce do zero. Fora do Pages/DOM, o adapter cai para memória.
+ */
+const storage = createStorageService({
+  backend: createBrowserStorageBackend(),
+  maxUnlockedIndex: PHASES.length - 1,
+});
+
+const resetSaveRequested =
+  new URLSearchParams(window.location.search).get('resetSave') === '1';
+
+if (resetSaveRequested) {
+  storage.clear();
+}
+
+/** Progresso carregado; sem save = default seguro (fase 1, carteira 0). */
+let saveState: SaveState = storage.load() ?? defaultSaveState();
+
+/** Modo de tela: boot na lista de fases (home), toque num card entra no jogo. */
+let screenMode: ScreenMode = 'list';
+
+/** Flash nulo D3 do card bloqueado tocado na lista; `null` = sem flash. */
+let lockedCardFlash: { readonly index: number; readonly startedAt: number } | null =
+  null;
+
 /** Fase atual e posição na sequência D10. */
 let phaseIndex = 0;
 let level: LevelLayout = firstPhase;
@@ -174,6 +222,37 @@ function hasNextPhase(): boolean {
   return phaseIndex < PHASES.length - 1;
 }
 
+/** Fase recomendada na lista (card com pulso D6): a próxima sem vitória. */
+function recommendedIndex(): number {
+  return recommendedPhaseIndex(saveState.unlockedIndex, PHASES.length);
+}
+
+/**
+ * Persiste o desbloqueio da sucessora no instante da vitória (M2).
+ *
+ * Progresso sobrevive a crash/reload no meio da sessão; re-vencer não regride
+ * e a última fase clampa no próprio índice. Selos e carteira não mudam neste
+ * épico — o spread preserva o que o save já tinha (M3 escreverá neles).
+ */
+function recordVictory(): void {
+  if (game.state.status !== 'won') {
+    return;
+  }
+
+  const unlocked = nextUnlockedIndex(
+    saveState.unlockedIndex,
+    phaseIndex,
+    PHASES.length,
+  );
+
+  if (unlocked === saveState.unlockedIndex) {
+    return;
+  }
+
+  saveState = { ...saveState, unlockedIndex: unlocked };
+  storage.persist(saveState);
+}
+
 /** Ação drenada ainda não iniciada, esperando o `bufferedStepGapMs`. */
 let pendingStepAt: number | null = null;
 /** Passo visual em andamento; `null` = repouso (a marcha da previsão segue). */
@@ -183,6 +262,12 @@ let predictions: Prediction[] = collectPredictions();
 /** Peça do primeiro giro que pulsa no passo 0 (D6); `null` depois da 1ª ação. */
 let firstHint: CellPos | null = firstHintTarget(game.state, predictions);
 let layout: SceneLayout = computeLayout(1, 1, game.state.board);
+/** Layout da home; recalculado no resize, mesmo enquanto a lista está oculta. */
+let phaseListLayout: PhaseListLayout = computePhaseListLayout(
+  1,
+  1,
+  PHASES.length,
+);
 
 /** Feedbacks de vida curta, todos ancorados no relógio do loop. */
 let flashes: CellFlash[] = [];
@@ -435,6 +520,10 @@ function drainAvailable(now: number): void {
       firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
 
+      // M2: a vitória grava o desbloqueio AGORA, não no toque de «Próxima
+      // fase» — um reload no meio da animação não perde o progresso.
+      recordVictory();
+
       // Coleta em ~0 tempo: a moeda já saiu do snapshot; o anel e o tick do
       // contador nascem no INÍCIO do passo, não em `endsAt`.
       for (const cell of animation.coins) {
@@ -588,6 +677,62 @@ function loadPhase(index: number): void {
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
   layout = computeLayout(layout.width, layout.height, game.state.board);
+  draw(performance.now());
+}
+
+/**
+ * Toque num card da lista (M2).
+ *
+ * Fase bloqueada: flash nulo D3 e nada acontece (o `index` continua preso ao
+ * save). Fase desbloqueada: entra no modo de jogo pelo MESMO `loadPhase` da
+ * sequência — vidas, buffer e animações nascem do layout. O seletor CW/CCW é
+ * ferramenta global e não é tocado aqui.
+ */
+function onPhaseCardTap(index: number): void {
+  if (screenMode !== 'list') {
+    return;
+  }
+
+  const phase = PHASES[index];
+
+  if (phase === undefined) {
+    return;
+  }
+
+  if (index > saveState.unlockedIndex) {
+    lockedCardFlash = { index, startedAt: performance.now() };
+    draw(lockedCardFlash.startedAt);
+    return;
+  }
+
+  lockedCardFlash = null;
+  screenMode = 'game';
+  loadPhase(index);
+}
+
+/**
+ * Glifo do cabeçalho: abandona a run e volta para a lista (M2).
+ *
+ * Sem confirmação e sem custo — derrota barata (GDD §3.7). NÃO toca no save:
+ * só a vitória persiste progresso. A run fica para trás inteira (buffer,
+ * animação e feedbacks limpos); entrar de novo recarrega a fase do zero.
+ */
+function returnToList(): void {
+  if (screenMode === 'list') {
+    return;
+  }
+
+  buffer.clear();
+  animation = null;
+  pendingStepAt = null;
+  flashes = [];
+  pulses = [];
+  exits = [];
+  lifePulses = [];
+  coinPulses = [];
+  coinTickAt = null;
+  lockedCardFlash = null;
+  screenMode = 'list';
   draw(performance.now());
 }
 
@@ -857,6 +1002,19 @@ function pruneFeedback(now: number): void {
 
 /** Desenha um quadro inteiro a partir do relógio. */
 function draw(now: number): void {
+  if (screenMode === 'list') {
+    drawPhaseList(ctx, phaseListLayout, {
+      phases: PHASES,
+      seals: saveState.seals,
+      unlockedIndex: saveState.unlockedIndex,
+      recommendedIndex: recommendedIndex(),
+      wallet: saveState.wallet,
+      now,
+      lockedFlash: lockedCardFlash,
+    });
+    return;
+  }
+
   pruneFeedback(now);
 
   const collected = new Set(game.state.coinsCollected.map((coin) => cellKey(coin)));
@@ -892,6 +1050,13 @@ function draw(now: number): void {
 
 /** Loop único: fecha o passo, drena a fila e desenha — sempre, sem setInterval. */
 function frame(timestamp: number): void {
+  if (
+    lockedCardFlash !== null &&
+    timestamp - lockedCardFlash.startedAt >= CELL_FLASH_MS
+  ) {
+    lockedCardFlash = null;
+  }
+
   if (pendingStepAt !== null && timestamp >= pendingStepAt) {
     pendingStepAt = null;
   }
@@ -934,11 +1099,20 @@ function resize(): void {
   // Desenhe sempre em px CSS; o transform escala para o backing store.
   ctx.setTransform(pixelWidth / cssWidth, 0, 0, pixelHeight / cssHeight, 0, 0);
   layout = computeLayout(cssWidth, cssHeight, game.state.board);
+  phaseListLayout = computePhaseListLayout(
+    cssWidth,
+    cssHeight,
+    PHASES.length,
+  );
   draw(performance.now());
 }
 
 attachPointerInput(canvas, {
   getLayout: () => layout,
+  getScreenMode: () => screenMode,
+  getPhaseListLayout: () => phaseListLayout,
+  onPhaseCardTap,
+  onListBack: returnToList,
   onAction,
   onReset,
   onFinishedAction,
@@ -985,6 +1159,18 @@ declare global {
       readonly stepEndsAt: number | null;
       /** Sentido ativo do seletor CW/CCW (M1/D22–D26), somente leitura. */
       readonly rotationDirection: RotationDirection;
+      /** Modo de tela (M2): home da lista ou partida. */
+      readonly screenMode: ScreenMode;
+      /** Snapshot somente-leitura do save carregado (M2). */
+      readonly save: SaveState;
+      /** Saldo da carteira do save (M2; conquista/escrita é do M3). */
+      readonly wallet: number;
+      /** Menor índice de fase desbloqueado (a recomendada). */
+      readonly unlockedIndex: number;
+      /** Índice do card que pulsa na lista (D6). */
+      readonly recommendedIndex: number;
+      /** Rect dos cards da lista, na ordem de `PHASES` (hit-test/QA). */
+      readonly phaseListRects: readonly Rect[];
     };
   }
 }
@@ -1043,6 +1229,24 @@ window.__trailsDebug = {
   },
   get rotationDirection() {
     return rotationDirection;
+  },
+  get screenMode() {
+    return screenMode;
+  },
+  get save() {
+    return saveState;
+  },
+  get wallet() {
+    return saveState.wallet;
+  },
+  get unlockedIndex() {
+    return saveState.unlockedIndex;
+  },
+  get recommendedIndex() {
+    return recommendedIndex();
+  },
+  get phaseListRects() {
+    return phaseListLayout.cards;
   },
 };
 

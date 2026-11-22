@@ -9,6 +9,10 @@
  * «Jogar de novo» na última fase e «Recomeçar» em deadEnd/lost. O caminho para
  * seguir/rejogar fica óbvio sem menu.
  *
+ * M2: um glifo de três barras no canto esquerdo do cabeçalho volta para a lista
+ * de fases a qualquer momento — sem confirmar e sem tocar no save. O alvo de
+ * 44 pt vive no layout; o desenho ocupa só a faixa do header.
+ *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
  * E8: a marca que acabou de esvaziar pulsa (cresce + anel, `lifeLostPulseMs`),
@@ -126,17 +130,28 @@ function drawHeader(
 ): void {
   const { header, headerFontSize } = layout;
   const status = statusLabel(state);
+  const iconSize = Math.min(headerFontSize * 1.2, 18);
+  const iconX = layout.listButton.x + layout.listButton.width / 2;
+  const iconY = header.y + header.height / 2;
+  const titleX = iconX + iconSize / 2 + Math.max(6, headerFontSize * 0.5);
 
   ctx.save();
   ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
   const statusWidth = Math.min(header.width * 0.42, ctx.measureText(status).width);
+
+  drawListGlyph(ctx, iconX, iconY, iconSize);
 
   ctx.globalAlpha = HEADER_ALPHA;
   ctx.fillStyle = PALETTE.track;
   ctx.textBaseline = 'middle';
   ctx.font = `500 ${headerFontSize}px ${FONT_STACK}`;
   ctx.textAlign = 'left';
-  ctx.fillText(levelName, header.x, header.y + header.height / 2, header.width * 0.42);
+  ctx.fillText(
+    levelName,
+    titleX,
+    header.y + header.height / 2,
+    header.width * 0.3,
+  );
 
   ctx.textAlign = 'right';
   ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
@@ -414,6 +429,45 @@ function selectorPulseScale(pulseAt: number | null, now: number): number {
   }
 
   return 1 + 0.2 * Math.sin(Math.PI * (elapsed / duration));
+}
+
+/**
+ * Glifo de três barras empilhadas (volta para a lista de fases).
+ *
+ * Desenhado por código, como todos os ícones do HUD; ocupa só a faixa do
+ * cabeçalho enquanto o alvo de toque de 44 pt vive no `SceneLayout`.
+ */
+function drawListGlyph(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+): void {
+  if (size <= 0) {
+    return;
+  }
+
+  const width = size;
+  const barHeight = Math.max(1.5, size * 0.16);
+  const step = barHeight * 2.1;
+
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = PALETTE.track;
+
+  for (const offset of [-1, 0, 1]) {
+    ctx.beginPath();
+    ctx.roundRect(
+      cx - width / 2,
+      cy + offset * step - barHeight / 2,
+      width,
+      barHeight,
+      barHeight / 2,
+    );
+    ctx.fill();
+  }
+
+  ctx.restore();
 }
 
 /**
