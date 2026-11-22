@@ -77,12 +77,12 @@ export interface Scene {
   readonly lifePulses: readonly LifeLostPulse[];
   /** Moedas ainda não coletadas (overlay sobre trilho; D16). */
   readonly coins: readonly CellPos[];
-  /** Total de moedas da fase; `0` = fase sem moedas. */
-  readonly coinsTotal: number;
   /** Coletas recentes: anel dourado na célula (E13). */
   readonly coinPulses: readonly CoinPulse[];
-  /** Início do tick do contador de moedas (E13); `null` = sem tick. */
-  readonly coinTickAt: number | null;
+  /** Saldo persistente da carteira (M3), exibido no cabeçalho. */
+  readonly wallet: number;
+  /** Início do tick do glifo da carteira no banco da vitória (M3). */
+  readonly walletTickAt: number | null;
   /** Sentido ativo do seletor CW/CCW (D22/D26). */
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
@@ -209,8 +209,8 @@ export function drawScene(
     hasNextPhase: scene.hasNextPhase,
     now,
     lifePulses: scene.lifePulses,
-    coinsTotal: scene.coinsTotal,
-    coinTickAt: scene.coinTickAt,
+    wallet: scene.wallet,
+    walletTickAt: scene.walletTickAt,
     rotationDirection: scene.rotationDirection,
     selectorPulseAt: scene.selectorPulseAt,
   });

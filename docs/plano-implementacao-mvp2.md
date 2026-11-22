@@ -96,7 +96,7 @@ Mesma regra de sempre: **um subagente por frente** (`opencode-go/deepseek-v4.1-f
 
 | Parâmetro | Default | Efeito |
 |---|---|---|
-| `bonusPerTrainTable` | `[0, 2, 6, 12]` | Bônus por trem entregue (D27, índice = trens entregues) |
+| `bonusPerTrainTable` | `[0, 0, 2, 6, 12]` | Bônus por trem entregue (D27) — **índice = trens entregues**: 1→+0, 2→+2, 3→+6, 4→+12 (n×(n−1)) |
 | `rescuePrice` / `rescueLimitPerRun` | `8` / `1` | Resgate de trem (D28) |
 | `timeTravelPrice` | `4` | Por uso; 1 passo por compra (D29) |
 | `selectorPulseMs` | ~350 | Pulso ao alternar o sentido |

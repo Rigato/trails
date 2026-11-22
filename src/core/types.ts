@@ -601,8 +601,10 @@ export type GameStatus = 'ready' | 'playing' | 'won' | 'deadEnd' | 'lost';
  * `LevelLayout.lives`; o passo que gasta a última vida leva a `lost`.
  *
  * `coinsCollected` são as moedas já coletadas nesta run, na ordem de coleta.
- * O array é único (cada célula aparece no máximo uma vez): o contador burro é
- * `coinsCollected.length`. Sem fórmula/persistência; reiniciar esvazia.
+ * O array é único (cada célula aparece no máximo uma vez): a leitura da run é
+ * `coinsCollected.length`. No MVP1 o HUD mostrava um contador burro; no MVP2 a
+ * leitura vive no painel de vitória e o valor entra no banco (D27/D30).
+ * Reiniciar esvazia.
  */
 export interface GameState {
   readonly levelId: string;

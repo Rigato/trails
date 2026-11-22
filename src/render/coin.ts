@@ -1,10 +1,10 @@
 /**
- * Moeda: overlay sobre trilho (contador burro do P2, D16).
+ * Moeda: overlay sobre trilho (D16).
  *
  * A moeda é um anel com miolo transparente — o trilho embaixo continua legível
  * (a moeda é opcional; a peça é obrigatória). O ouro é fixo no desenho, fora do
  * tuning de feel: `coinRatio` controla o diâmetro no tabuleiro; `coinPulseMs`
- * anima o pulse de coleta no tabuleiro e o tick do contador (E13).
+ * anima o pulse de coleta no tabuleiro e o tick do glifo da carteira (E13/M3).
  */
 
 import { TUNING } from '../config/tuning';
@@ -154,7 +154,7 @@ export function drawCoinPulse(
 }
 
 /**
- * Tick do contador de moedas no HUD (E13).
+ * Tick do glifo de ouro no HUD (E13; M3 usa no glifo da carteira).
  *
  * O glifo cresce 1 → 1,34 → 1 e um anel fino de ouro expande/some; o número
  * fica estável (só o valor novo). Mesma família do pulse de vida, sutil.

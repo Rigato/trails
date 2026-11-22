@@ -22,8 +22,13 @@
  * 7. M2/D30–D31: o boot abre a LISTA DE FASES (home), não a partida. O save
  *    entre sessões é lido uma vez pelo `StorageService` e persiste a cada
  *    vitória (desbloqueio da sucessora), na hora; reset de run e abandono para
- *    a lista não tocam no save. Selos e carteira são só leitura/exibição neste
- *    épico. O seletor CW/CCW atravessa lista ↔ jogo sem resetar.
+ *    a lista não tocam no save. O seletor CW/CCW atravessa lista ↔ jogo sem
+ *    resetar.
+ * 8. M3/D27/D30/D31: a vitória banca as moedas da run + bônus n×(n−1) por
+ *    trem entregue e grava o selo de perfeição (todos os trens, todas as
+ *    moedas, run sem consumíveis) UMA vez por fase. A persistência é única,
+ *    junto do desbloqueio. Derrota/abandono não bancam nada; a carteira no
+ *    header é o saldo persistente, e o painel de vitória mostra a conta.
  *
  * O recomeço é síncrono: cancelar animação + limpar buffer + resetar o core +
  * redesenhar — nenhuma ação de uma run morta sobrevive, e as vidas voltam ao
@@ -83,6 +88,8 @@ import {
 import { drawPhaseList } from './render/phasesList';
 import { drawScene, type TrainView } from './render/scene';
 import { directionAngle } from './render/train';
+import { drawVictoryPanel } from './render/victoryPanel';
+import { addSeal, sealCondition, victoryBanking } from './save/economy';
 import { nextUnlockedIndex, recommendedPhaseIndex } from './save/progress';
 import {
   createBrowserStorageBackend,
@@ -193,6 +200,21 @@ if (resetSaveRequested) {
 /** Progresso carregado; sem save = default seguro (fase 1, carteira 0). */
 let saveState: SaveState = storage.load() ?? defaultSaveState();
 
+/**
+ * A run atual usou algum consumível (D30)?
+ *
+ * Nasce `false` em cada setup/reset/troca de fase. NADA o liga no M3: o
+ * resgate (M4) e o time-travel (M5) serão os únicos a marcá-lo, e o selo lê
+ * este valor na vitória.
+ */
+let consumableUsed = false;
+
+/** Resumo do banco da última vitória (painel + hook); `null` fora de vitória. */
+let lastVictoryBanking: VictorySummary | null = null;
+
+/** Início da conquista/banco da vitória (pulso da estrela, D30/D5). */
+let victoryAt: number | null = null;
+
 /** Modo de tela: boot na lista de fases (home), toque num card entra no jogo. */
 let screenMode: ScreenMode = 'list';
 
@@ -227,29 +249,98 @@ function recommendedIndex(): number {
   return recommendedPhaseIndex(saveState.unlockedIndex, PHASES.length);
 }
 
+/** Trens com status `delivered` no snapshot (vitória/painel, M3). */
+function deliveredCount(): number {
+  return game.state.trains.filter(
+    (train) => train.status.kind === 'delivered',
+  ).length;
+}
+
+/** Resumo econômico da última vitória (hook e painel); limpo a cada reset. */
+interface VictorySummary {
+  readonly coins: number;
+  readonly bonus: number;
+  readonly banked: number;
+  readonly walletAfter: number;
+  readonly sealEarned: boolean;
+  readonly sealNew: boolean;
+}
+
 /**
- * Persiste o desbloqueio da sucessora no instante da vitória (M2).
+ * Persiste a vitória: desbloqueio da sucessora + banco de moedas + selo (M2/M3).
  *
- * Progresso sobrevive a crash/reload no meio da sessão; re-vencer não regride
- * e a última fase clampa no próprio índice. Selos e carteira não mudam neste
- * épico — o spread preserva o que o save já tinha (M3 escreverá neles).
+ * Este é o ÚNICO ponto de escrita do save por run. O banco é a moeda coletada
+ * na run + bônus n×(n−1) por trem entregue (D27); o selo de perfeição exige
+ * todos os trens, todas as moedas e nenhum consumível (D30), e só é gravado
+ * uma vez por fase (D31). A persistência é UMA só, com os três campos juntos —
+ * um reload no meio da animação não perde a conta.
+ *
+ * `consumableUsed` nasce `false` a cada run e nada o liga no M3: M4 (resgate)
+ * e M5 (time-travel) serão os únicos a marcá-lo.
  */
-function recordVictory(): void {
+function recordVictory(now: number): void {
   if (game.state.status !== 'won') {
     return;
   }
 
+  const delivered = deliveredCount();
+  const coins = game.state.coinsCollected.length;
+  const trainTotal = level.trains.length;
+  const coinsTotal = level.coins?.length ?? 0;
+
+  const banking = victoryBanking({
+    delivered,
+    coins,
+    wallet: saveState.wallet,
+    table: TUNING.bonusPerTrainTable,
+  });
+
+  const sealEarned = sealCondition({
+    delivered,
+    trainTotal,
+    coins,
+    coinsTotal,
+    consumableUsed,
+  });
+  const sealUpdate = sealEarned
+    ? addSeal(saveState.seals, level.id)
+    : { seals: saveState.seals, sealNew: false };
   const unlocked = nextUnlockedIndex(
     saveState.unlockedIndex,
     phaseIndex,
     PHASES.length,
   );
+  const changed =
+    unlocked !== saveState.unlockedIndex ||
+    sealUpdate.sealNew ||
+    banking.banked > 0;
 
-  if (unlocked === saveState.unlockedIndex) {
+  lastVictoryBanking = {
+    coins,
+    bonus: banking.bonus,
+    banked: banking.banked,
+    walletAfter: banking.walletAfter,
+    sealEarned,
+    sealNew: sealUpdate.sealNew,
+  };
+  victoryAt = now;
+
+  // O glifo da carteira só pulsa quando o saldo realmente sobe; uma vitória
+  // de +0 (1 trem, sem moedas) não inventa festa no header.
+  if (banking.banked > 0) {
+    walletTickAt = now;
+  }
+
+  if (!changed) {
     return;
   }
 
-  saveState = { ...saveState, unlockedIndex: unlocked };
+  saveState = {
+    ...saveState,
+    unlockedIndex: unlocked,
+    seals: sealUpdate.seals,
+    wallet: banking.walletAfter,
+  };
   storage.persist(saveState);
 }
 
@@ -276,6 +367,8 @@ let exits: DerailExit[] = [];
 let lifePulses: LifeLostPulse[] = [];
 let coinPulses: CoinPulse[] = [];
 let coinTickAt: number | null = null;
+/** Início do tick do glifo da carteira quando a vitória banca (M3). */
+let walletTickAt: number | null = null;
 
 /** O jogo terminou (vitória, «sem trem ativo» de D1 ou derrota D7)? */
 function isFinished(): boolean {
@@ -520,12 +613,13 @@ function drainAvailable(now: number): void {
       firstHint = firstHintTarget(game.state, predictions);
       animation = buildStepAnimation(previous, result, now);
 
-      // M2: a vitória grava o desbloqueio AGORA, não no toque de «Próxima
-      // fase» — um reload no meio da animação não perde o progresso.
-      recordVictory();
+      // M2/M3: a vitória grava desbloqueio + carteira + selo AGORA, não no
+      // toque de «Próxima fase» — um reload no meio da animação não perde a
+      // conta.
+      recordVictory(now);
 
-      // Coleta em ~0 tempo: a moeda já saiu do snapshot; o anel e o tick do
-      // contador nascem no INÍCIO do passo, não em `endsAt`.
+      // Coleta em ~0 tempo: a moeda já saiu do snapshot; o anel dourado da
+      // coleta nasce no INÍCIO do passo, não em `endsAt`.
       for (const cell of animation.coins) {
         coinPulses.push({ cell, startedAt: now });
       }
@@ -645,6 +739,10 @@ function onReset(): void {
   lifePulses = [];
   coinPulses = [];
   coinTickAt = null;
+  consumableUsed = false;
+  lastVictoryBanking = null;
+  victoryAt = null;
+  walletTickAt = null;
   game.reset();
   predictions = collectPredictions();
   firstHint = firstHintTarget(game.state, predictions);
@@ -671,6 +769,10 @@ function loadPhase(index: number): void {
   lifePulses = [];
   coinPulses = [];
   coinTickAt = null;
+  consumableUsed = false;
+  lastVictoryBanking = null;
+  victoryAt = null;
+  walletTickAt = null;
   phaseIndex = index;
   level = next;
   game = setup(level);
@@ -731,6 +833,10 @@ function returnToList(): void {
   lifePulses = [];
   coinPulses = [];
   coinTickAt = null;
+  consumableUsed = false;
+  lastVictoryBanking = null;
+  victoryAt = null;
+  walletTickAt = null;
   lockedCardFlash = null;
   screenMode = 'list';
   draw(performance.now());
@@ -1040,12 +1146,29 @@ function draw(now: number): void {
     exits,
     lifePulses,
     coins,
-    coinsTotal: level.coins?.length ?? 0,
     coinPulses,
-    coinTickAt,
+    wallet: saveState.wallet,
+    walletTickAt,
     rotationDirection,
     selectorPulseAt,
   });
+
+  // M3: a leitura econômica da run vive no painel sobre o tabuleiro; o botão
+  // único de fim de run continua sendo o do HUD, intocado.
+  if (game.state.status === 'won' && lastVictoryBanking !== null) {
+    drawVictoryPanel(ctx, layout, {
+      delivered: deliveredCount(),
+      trainTotal: level.trains.length,
+      coins: lastVictoryBanking.coins,
+      coinsTotal: level.coins?.length ?? 0,
+      bonus: lastVictoryBanking.bonus,
+      wallet: lastVictoryBanking.walletAfter,
+      sealed: saveState.seals.includes(level.id),
+      sealNew: lastVictoryBanking.sealNew,
+      now,
+      startedAt: victoryAt,
+    });
+  }
 }
 
 /** Loop único: fecha o passo, drena a fila e desenha — sempre, sem setInterval. */
@@ -1152,7 +1275,7 @@ declare global {
       readonly lifePulses: readonly LifeLostPulse[];
       /** Coletas de moeda recentes (E13), com célula e início. */
       readonly coinPulses: readonly CoinPulse[];
-      /** Início do tick do contador de moedas (E13); `null` = sem tick. */
+      /** Início da última coleta de moeda na run (QA E13); o pulse visível é o do tabuleiro. */
       readonly coinTickAt: number | null;
       /** Início/fim do passo visual em andamento (QA de duração). */
       readonly stepStartedAt: number | null;
@@ -1161,10 +1284,16 @@ declare global {
       readonly rotationDirection: RotationDirection;
       /** Modo de tela (M2): home da lista ou partida. */
       readonly screenMode: ScreenMode;
-      /** Snapshot somente-leitura do save carregado (M2). */
+      /** Snapshot somente-leitura do save carregado (M2/M3). */
       readonly save: SaveState;
-      /** Saldo da carteira do save (M2; conquista/escrita é do M3). */
+      /** Saldo da carteira do save, já pós-banco da última vitória (M3). */
       readonly wallet: number;
+      /** Ids de fase com selo de perfeição (M3; leitura do save). */
+      readonly seals: readonly string[];
+      /** A run atual usou consumível? M3 sempre `false`; M4/M5 ligam. */
+      readonly consumableUsed: boolean;
+      /** Banco da última vitória (M3); `null` após reset/troca de fase. */
+      readonly lastVictoryBanking: VictorySummary | null;
       /** Menor índice de fase desbloqueado (a recomendada). */
       readonly unlockedIndex: number;
       /** Índice do card que pulsa na lista (D6). */
@@ -1238,6 +1367,15 @@ window.__trailsDebug = {
   },
   get wallet() {
     return saveState.wallet;
+  },
+  get seals() {
+    return saveState.seals;
+  },
+  get consumableUsed() {
+    return consumableUsed;
+  },
+  get lastVictoryBanking() {
+    return lastVictoryBanking;
   },
   get unlockedIndex() {
     return saveState.unlockedIndex;

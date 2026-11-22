@@ -102,6 +102,16 @@ export interface Tuning {
   /** Feedback de entrega (D5). */
   readonly deliverPulseMs: number;
   readonly deliverPulseScale: number;
+  /**
+   * Bônus por trem entregue na vitória (D27) — tabela fixa n×(n−1).
+   *
+   * O ÍNDICE É O NÚMERO DE TRENS ENTREGUES, não o de trens da fase:
+   * 1 → +0, 2 → +2, 3 → +6, 4 → +12. O índice 0 existe para a leitura
+   * direta (`table[delivered]`) e vale 0; um índice fora da tabela também
+   * vira 0 no lookup seguro da economia. Os valores são tuning; a fórmula é
+   * fechada.
+   */
+  readonly bonusPerTrainTable: readonly number[];
   /** Pulse na marca de vida perdida no HUD (P1/D7). */
   readonly lifeLostPulseMs: number;
   /**
@@ -145,6 +155,8 @@ export const TUNING: Tuning = {
   boardMaxWidthRatio: 0.8,
   deliverPulseMs: 450,
   deliverPulseScale: 1.25,
+  /** D27, índice = trens entregues: 1→+0, 2→+2, 3→+6, 4→+12. */
+  bonusPerTrainTable: [0, 0, 2, 6, 12],
   lifeLostPulseMs: 350,
   selectorPulseMs: 350,
   derailExitMs: 300,

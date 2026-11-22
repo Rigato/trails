@@ -515,7 +515,7 @@ export function coinPulseProgress(pulse: CoinPulse, now: number): number {
   return clamp01((now - pulse.startedAt) / duration);
 }
 
-/** Progresso do tick do contador de moedas (mesma janela do pulse). */
+/** Progresso do tick do glifo de ouro no HUD (mesma janela do pulse). */
 export function coinTickProgress(startedAt: number, now: number): number {
   const duration = Math.max(1, TUNING.coinPulseMs);
   return clamp01((now - startedAt) / duration);

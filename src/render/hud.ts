@@ -13,6 +13,11 @@
  * de fases a qualquer momento — sem confirmar e sem tocar no save. O alvo de
  * 44 pt vive no layout; o desenho ocupa só a faixa do header.
  *
+ * M3: o cabeçalho mostra a CARTEIRA persistente (glifo + saldo), não o contador
+ * burro de moedas da run — a leitura por run vive no painel de vitória. Quando
+ * a vitória banca, o glifo faz o tick da família E13; a coleta no tabuleiro
+ * continua com o pulse dela, independente do header.
+ *
  * Vidas são marcas geométricas no centro do cabeçalho: diamantes cheios =
  * vivas, vazios = perdidas. Fase sem vidas (`lives: null`) não desenha nada.
  * E8: a marca que acabou de esvaziar pulsa (cresce + anel, `lifeLostPulseMs`),
@@ -46,10 +51,13 @@ export interface HudContext {
   readonly now: number;
   /** Marcas que acabaram de esvaziar e ainda pulsam (E8). */
   readonly lifePulses: readonly LifeLostPulse[];
-  /** Total de moedas da fase; `0` = fase sem moedas (P0/P1). */
-  readonly coinsTotal: number;
-  /** Início do último tick do contador de moedas (E13); `null` = sem tick. */
-  readonly coinTickAt: number | null;
+  /** Saldo persistente da carteira (M3), exibido no cabeçalho. */
+  readonly wallet: number;
+  /**
+   * Início do tick do glifo da carteira quando a vitória banca (M3);
+   * `null` = sem tick. A coleta de moeda no tabuleiro não anima o header.
+   */
+  readonly walletTickAt: number | null;
   /** Sentido ativo do seletor CW/CCW (D22/D26). */
   readonly rotationDirection: RotationDirection;
   /** Início do pulso do seletor ao alternar; `null` = sem pulso. */
@@ -174,36 +182,35 @@ function drawHeader(
     );
   }
 
-  if (context.coinsTotal > 0) {
-    drawCoinCounter(
-      ctx,
-      layout,
-      state.coinsCollected.length,
-      statusWidth,
-      context.now,
-      context.coinTickAt,
-    );
-  }
+  drawWalletCounter(
+    ctx,
+    layout,
+    context.wallet,
+    statusWidth,
+    context.now,
+    context.walletTickAt,
+  );
 }
 
 /**
- * Contador burro de moedas: glifo de ouro + `coinsCollected.length`, à direita
- * do cabeçalho antes do «passo N». Sem total, fórmula ou denominador — só o
- * número coletado. Fase sem moedas não chega aqui.
+ * Carteira persistente: glifo de ouro + saldo, à direita do cabeçalho antes do
+ * «passo N». Aparece sempre (inclusive 0), porque é o saldo do jogador — não o
+ * contador burro da run, que deixou de existir no header no M3.
  *
- * E13: quando o número sobe, o glifo pulsa uma vez (cresce + anel dourado,
- * `coinPulseMs`) — o texto do número fica estável; o movimento é do glifo.
+ * M3/E13: quando a vitória banca, o glifo pulsa uma vez (cresce + anel
+ * dourado, `coinPulseMs`); o número fica estável. A coleta no tabuleiro
+ * mantém o pulse dela no tabuleiro.
  */
-function drawCoinCounter(
+function drawWalletCounter(
   ctx: CanvasRenderingContext2D,
   layout: SceneLayout,
-  count: number,
+  wallet: number,
   statusWidth: number,
   now: number,
-  coinTickAt: number | null,
+  walletTickAt: number | null,
 ): void {
   const { header, headerFontSize } = layout;
-  const countText = String(count);
+  const countText = String(Math.max(0, Math.trunc(wallet)));
 
   ctx.save();
   ctx.font = `600 ${headerFontSize}px ${FONT_STACK}`;
@@ -223,7 +230,8 @@ function drawCoinCounter(
   ctx.textBaseline = 'middle';
   ctx.fillText(countText, rightEdge, cy);
 
-  const tick = coinTickAt === null ? 1 : coinTickProgress(coinTickAt, now);
+  const tick =
+    walletTickAt === null ? 1 : coinTickProgress(walletTickAt, now);
 
   if (tick < 1) {
     drawCoinTick(ctx, glyphX, cy, coinRadius, tick);
