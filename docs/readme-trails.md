@@ -38,6 +38,7 @@ Puzzle de roteamento ferroviário em grade para telas de toque. Locomotivas colo
 | `proposta-mvp2.md` | Escopo MVP2 aprovado (v2) — nasceu do veredito do designer + brief para o Hefesto |
 | `brief-mvp2-hefesto.md` | Contexto: veredito do protótipo e os quatro eixos do MVP2 |
 | `plano-implementacao-mvp2.md` | Plano operacional do MVP2 — épicos M1–M9, critério de pronto, decisões D23–D32 |
+| `handoff-mvp2-v1.md` | Handoff v1.0 para nova sessão — estado publicado, decisões, interfaces, instrumento CDP, dívidas e próximos passos |
 | `prompt-opencode.md` | Prompt pronto para o orquestrador (Opencode) criar o plano de implementação com subagentes |
 
 ## Como trabalhar neste projeto
